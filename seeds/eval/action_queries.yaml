@@ -20,10 +20,10 @@ queries:
 - { q: "let me see everything I'm selling",              expect: catalog.product.list,   tier: easy }
 - { q: "take this item off the shop for good",           expect: catalog.product.delete, tier: easy }
 - { q: "only 3 packets remain",                          expect: catalog.stock.update,   tier: easy }
-- { q: "I want to give my customers 25 percent off",     expect: offers.create,          tier: easy }
+- { q: "I want to give my customers 25 percent off",     expect: offers.discount.create, tier: easy }
 - { q: "which discounts are live at the moment",         expect: offers.list,            tier: easy }
 - { q: "kill the sale, it's costing me too much",        expect: offers.deactivate,      tier: easy }
-- { q: "I want a code people type in for a discount",    expect: offers.coupon.create,   tier: easy }
+- { q: "buy one get one on my coffee",                   expect: offers.deal.create,     tier: easy }
 - { q: "suresh has taken goods worth 800 without paying", expect: khata.entry.create,    tier: easy }
 - { q: "how much is still pending from mohan",           expect: khata.balance.get,      tier: easy }
 - { q: "nudge him about the money he owes",              expect: khata.reminder.send,    tier: easy }
@@ -41,7 +41,7 @@ queries:
 - { q: "ek naya saman list karna hai dukaan mein",       expect: catalog.product.create, tier: medium }
 - { q: "chawal ka daam badhana hai",                     expect: catalog.product.update, tier: medium }
 - { q: "mera stock khatam ho gaya is item ka",           expect: catalog.stock.update,   tier: medium }
-- { q: "त्योहार पर छूट देनी है",                            expect: offers.create,          tier: medium }
+- { q: "त्योहार पर छूट देनी है",                            expect: offers.discount.create, tier: medium }
 - { q: "sale ko aur ek hafte chalao",                    expect: offers.update,          tier: medium }
 - { q: "ramesh ne 200 de diye aaj",                      expect: khata.entry.settle,     tier: medium }
 - { q: "sabka milakar kitna udhaar bacha hai",           expect: khata.customer.list,    tier: medium }
@@ -56,8 +56,8 @@ queries:
 - { q: "did any payment fail this week",                 expect: payments.transaction.list, tier: medium }
 
 # ── confusable: the sibling it must not pick ────────────────────────────
-- { q: "make my existing weekend sale bigger",     expect: offers.update,          not_expect: offers.create,          tier: confusable }
-- { q: "set up a fresh discount for next month",   expect: offers.create,          not_expect: offers.update,          tier: confusable }
+- { q: "make my existing weekend sale bigger",     expect: offers.update,          not_expect: offers.discount.create, tier: confusable }
+- { q: "set up a fresh discount for next month",   expect: offers.discount.create, not_expect: offers.update,          tier: confusable }
 - { q: "write down that he took 300 on credit",    expect: khata.entry.create,     not_expect: khata.entry.settle,     tier: confusable }
 - { q: "mark that he cleared 300 of his balance",  expect: khata.entry.settle,     not_expect: khata.entry.create,     tier: confusable }
 - { q: "show me what customers have ordered",      expect: orders.list,            not_expect: catalog.product.list,   tier: confusable }
@@ -73,13 +73,37 @@ queries:
 - { q: "I have 40 more units after a delivery",    expect: catalog.stock.update,   not_expect: catalog.product.update, tier: confusable }
 - { q: "this product should be called something else", expect: catalog.product.update, not_expect: catalog.stock.update, tier: confusable }
 
+# ── confusable: deal or discount? one merchant word, two APIs ───────────
+# A deal changes what the customer receives; a discount changes what they pay.
+# Both are "offer" to a merchant, and both go through the same endpoint.
+- { q: "take 20 percent off everything in my shop",  expect: offers.discount.create, not_expect: offers.deal.create,     tier: confusable }
+- { q: "free dessert with any bill over 500",        expect: offers.deal.create,     not_expect: offers.discount.create, tier: confusable }
+- { q: "flat 100 rupees off on orders above 800",    expect: offers.discount.create, not_expect: offers.deal.create,     tier: confusable }
+- { q: "sell two shirts together for one price",     expect: offers.deal.create,     not_expect: offers.discount.create, tier: confusable }
+- { q: "ek coffee ke saath doosri free",             expect: offers.deal.create,     not_expect: offers.discount.create, tier: confusable }
+- { q: "bill pe 15 percent kam kar do",              expect: offers.discount.create, not_expect: offers.deal.create,     tier: confusable }
+
+# ── real public APIs: these can actually be called ──────────────────────
+- { q: "what's the temperature outside",             expect: weather.current,            tier: easy }
+- { q: "should i carry an umbrella",                 expect: weather.current,            tier: medium }
+- { q: "how polluted is it right now",               expect: weather.air_quality,        tier: easy }
+- { q: "what time will it get dark",                 expect: weather.sun_times,          tier: easy }
+- { q: "i need lat long for a town",                 expect: weather.geocode,            tier: medium }
+- { q: "what's the dollar to rupee rate",            expect: reference.exchange_rate,    tier: easy }
+- { q: "how much is bitcoin worth now",              expect: reference.crypto_price,     tier: easy }
+- { q: "iska matlab samjhao",                        expect: reference.define_word,      tier: medium }
+- { q: "when are the next bank holidays",            expect: reference.public_holidays,  tier: medium }
+- { q: "is the air safe to go out in",               expect: weather.air_quality,        not_expect: weather.current,        tier: confusable }
+- { q: "how warm will it be this afternoon",         expect: weather.current,            not_expect: weather.air_quality,    tier: confusable }
+- { q: "convert 500 rupees into dollars",            expect: reference.exchange_rate,    not_expect: reference.crypto_price, tier: confusable }
+
 # ── negative: questions, not instructions ───────────────────────────────
 # The correct outcome is confidence 'low'. Any of these resolving as 'high'
 # means the assistant would take an action nobody asked for.
 - { q: "what does khata actually mean",                  expect: null, tier: negative }
 - { q: "why hasn't my discount been applied to orders",  expect: null, tier: negative }
 - { q: "how long do refunds normally take to arrive",    expect: null, tier: negative }
-- { q: "is it better to give a coupon or a flat discount", expect: null, tier: negative }
+- { q: "is it better to run a deal or a discount",      expect: null, tier: negative }
 - { q: "what happens if I don't accept an order in time", expect: null, tier: negative }
 - { q: "why is my shop not showing up in search",        expect: null, tier: negative }
 - { q: "what's the weather like today",                  expect: null, tier: negative }

@@ -1,4 +1,4 @@
-import { AlertTriangle, KeyRound, MessageSquare, Repeat } from 'lucide-react';
+import { AlertTriangle, Globe, KeyRound, MessageSquare, Repeat } from 'lucide-react';
 import { Badge } from './ui';
 
 /**
@@ -16,6 +16,9 @@ import { Badge } from './ui';
 
 export interface ApiCardMetadata {
   api_id?: string;
+  base_url?: string;
+  body_root?: string;
+  constants?: Record<string, unknown>;
   domain?: string;
   method?: string;
   path?: string;
@@ -72,7 +75,12 @@ export function ApiContract({ metadata }: { metadata: ApiCardMetadata }) {
         <Badge tone={methodTone[String(metadata.method).toUpperCase()] ?? 'gray'}>
           {String(metadata.method ?? '?').toUpperCase()}
         </Badge>
-        <code className="font-mono text-sm text-gray-900 break-all">{metadata.path}</code>
+        <code className="font-mono text-sm text-gray-900 break-all">
+          {metadata.base_url && (
+            <span className="text-gray-400">{String(metadata.base_url).replace(/\/$/, '')}</span>
+          )}
+          {metadata.path}
+        </code>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap text-xs">
@@ -93,7 +101,37 @@ export function ApiContract({ metadata }: { metadata: ApiCardMetadata }) {
             <AlertTriangle size={11} className="mr-1" /> synthetic seed — not a real contract
           </Badge>
         )}
+        {metadata.status === 'live' && (
+          <Badge tone="green">
+            <Globe size={11} className="mr-1" /> real public API — callable
+          </Badge>
+        )}
       </div>
+
+      {/* Values that are always sent, whatever the merchant said. Without these
+          the path alone does not identify the action — two APIs can share one
+          endpoint and differ only by a discriminator. */}
+      {metadata.constants && Object.keys(metadata.constants).length > 0 && (
+        <Section title="Always sent">
+          <div className="space-y-1">
+            {Object.entries(metadata.constants).map(([key, value]) => (
+              <div key={key} className="flex gap-2 text-sm">
+                <code className="font-mono text-xs text-gray-500 shrink-0">{key}</code>
+                <span className="text-gray-400">=</span>
+                <code className="font-mono text-xs text-primary-700 break-all">
+                  {String(value)}
+                </code>
+              </div>
+            ))}
+          </div>
+          {metadata.body_root && (
+            <p className="text-xs text-gray-500 mt-2">
+              Collected fields nest under{' '}
+              <code className="font-mono">{String(metadata.body_root)}</code> in the body.
+            </p>
+          )}
+        </Section>
+      )}
 
       {/* Fields: what has to be collected before the call can be made */}
       {fields.length > 0 && (
@@ -120,6 +158,9 @@ export function ApiContract({ metadata }: { metadata: ApiCardMetadata }) {
                     </td>
                     <td className="py-2 pr-4 text-xs text-gray-600 whitespace-nowrap">
                       {String(field.type ?? '—')}
+                      {field.in ? (
+                        <div className="text-gray-400">in {String(field.in)}</div>
+                      ) : null}
                       {Array.isArray(field.values) && (
                         <div className="text-gray-400 font-mono">
                           {(field.values as string[]).join(' | ')}

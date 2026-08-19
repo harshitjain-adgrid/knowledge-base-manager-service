@@ -1,5 +1,16 @@
 # Baseline results
 
+> **These numbers predate the offers rewrite and the real public-API domains.**
+> They were measured against a 33-card catalogue in which `offers.create` was a
+> single invented endpoint. The catalogue is now 41 cards: `offers.create` has
+> been replaced by `offers.deal.create` and `offers.discount.create` — one
+> merchant word, two payloads behind one MPIN-gated endpoint — and the
+> `weather` and `reference` domains have been added.
+>
+> **Re-run `run_eval.py` after reloading the catalogue and replace this file.**
+> The action-selection numbers below are not valid for the current content; the
+> product-knowledge numbers are, since that side did not change.
+
 Measured 19 August 2026 against the seed content, `gemini-embedding-2` at 3072
 dimensions, `min_score=0.65`, `decision_margin=0.02`.
 

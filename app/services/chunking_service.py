@@ -390,6 +390,10 @@ HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 API_ID_RE = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)+$")
 MIN_UTTERANCES = 3
 
+# Where a collected value goes when the request is built. Defaults to the query
+# string for GET and the body for everything else, so most cards never say it.
+FIELD_LOCATIONS = {"query", "body", "path", "header"}
+
 
 def validate_tool_card(meta: dict) -> list[str]:
     """
@@ -449,6 +453,26 @@ def validate_tool_card(meta: dict) -> list[str]:
                     f"fields[{index}] ('{field.get('name')}') is required but has "
                     f"no 'prompt'. Without one there is nothing to ask the merchant."
                 )
+            location = field.get("in")
+            if location is not None and str(location) not in FIELD_LOCATIONS:
+                problems.append(
+                    f"fields[{index}] ('{field.get('name')}') has in: {location!r}. "
+                    f"Use one of {', '.join(sorted(FIELD_LOCATIONS))}."
+                )
+
+    base_url = meta.get("base_url")
+    if base_url is not None and not str(base_url).startswith(("http://", "https://")):
+        problems.append(
+            f"base_url {base_url!r} should be an absolute URL. Leave it out for an "
+            f"API on the product's own host."
+        )
+
+    constants = meta.get("constants")
+    if constants is not None and not isinstance(constants, dict):
+        problems.append(
+            "'constants' should be a mapping of request values that are always "
+            "the same — a discriminator like purpose: DEAL_CREATE, for instance."
+        )
 
     return problems
 
@@ -535,7 +559,8 @@ def chunk_tool_card(
     # The needs line is words rather than field names, because it is embedded:
     # "discount type (percentage or flat)" can match a merchant who says "flat
     # 100 off", where `discount_type` cannot.
-    header = f"{doc_title or api_id} ({method} {path})"
+    endpoint = f"{str(meta.get('base_url') or '').rstrip('/')}{path}"
+    header = f"{doc_title or api_id} ({method} {endpoint})"
     card = f"{header}\n\n{body}"
 
     needs = _describe_fields(meta.get("fields"), required=True)

@@ -29,6 +29,11 @@ DOMAINS = {
     "customers": "The people who buy from the shop.",
     "store":     "The shop itself — profile, timings, delivery area.",
     "reports":   "Summaries and insights about how the shop is doing.",
+    # Real, key-free public APIs. Everything else here is synthetic and cannot
+    # be called; these can, so an orchestrator can be tested end to end before
+    # the merchant APIs exist.
+    "weather":   "Weather, air quality and daylight for a place.",
+    "reference": "Look-ups — exchange rates, crypto prices, words, holidays.",
 }
 
 # ── The catalogue ───────────────────────────────────────────────────────────
@@ -178,91 +183,148 @@ This changes quantity only. To change the price, use `catalog.product.update`.""
     ]),
 
 # ═══════════════════════════ offers ═══════════════════════════
+#
+# Modelled on the real AdGrid contract, not invented. A merchant says "offer"
+# for two different things, and the backend treats them as two different
+# payloads behind ONE MPIN-gated endpoint, discriminated by `purpose`:
+#
+#   POST /v1/merchant/{merchantId}/mpin-actions
+#     purpose = DEAL_CREATE      -> CreateDealRequest     -> OfferResponse
+#     purpose = DISCOUNT_CREATE  -> CreateDiscountRequest -> DiscountResponse
+#
+# So the path cannot identify the action. That is what `constants` is for.
+#
+# This is also the hardest selection problem in the catalogue: one merchant word
+# covering two APIs. A deal is structural — buy one get one, a bundle, a free
+# item. A discount is monetary — a percentage or an amount off.
 
 dict(
-    api_id="offers.create", domain="offers", title="Create an offer",
-    method="POST", path="/v1/merchant/offers",
-    mpin_required=False, idempotent=False,
-    body="""Creates a discount on the shop — either a percentage off or a flat
-amount off — and puts it live. It can cover the whole shop or selected products.
+    api_id="offers.deal.create", domain="offers", title="Create a deal",
+    method="POST", path="/v1/merchant/{merchantId}/mpin-actions",
+    mpin_required=True, idempotent=False,
+    constants={"purpose": "DEAL_CREATE"},
+    body_root="payload",
+    body="""Creates a deal — an offer where the customer gets extra goods rather
+than money off. Buy one get one, a bundle at a set price, or a free item over a
+bill threshold.
 
-This makes a new offer. Changing one that already runs is `offers.update`, and a
-code the customer has to type is `offers.coupon.create`.""",
+A deal changes what the customer receives. If the customer is getting money off
+instead — a percentage or a flat amount — that is `offers.discount.create`.
+Merchants call both of these "offers", so ask which they mean when it is not
+clear from the numbers they gave.""",
     fields=[
-        dict(name="offer_name", type="string", required=True, max_length=40,
-             prompt="What should this offer be called?", example="Sunday Special"),
-        dict(name="discount_type", type="enum", required=True, values=["percentage", "flat"],
-             prompt="Percentage off, or a flat amount off?"),
-        dict(name="discount_value", type="number", required=True,
-             prompt="How much off?", example=20),
-        dict(name="applies_to", type="enum", required=False, values=["all", "selected"],
-             default="all", prompt="On everything, or only on some products?"),
-        dict(name="valid_until", type="date", required=False, default="+30d",
-             prompt="Until when should it run?"),
-        dict(name="min_order_value", type="number", required=False,
-             prompt="Any minimum order amount for it to apply?"),
+        dict(name="title", type="string", required=True,
+             prompt="What should the deal be called?", example="Buy 1 Get 1 Coffee"),
+        dict(name="offerType", type="enum", required=True,
+             values=["BOGO", "BUNDLE_DEAL", "FREE_ITEM"],
+             prompt="Is it buy-one-get-one, a bundle, or a free item?"),
+        dict(name="config", type="object", required=True,
+             prompt="Which item, and how many?",
+             example='{"appliesOn":"SAME_ITEM","buyItemName":"Cappuccino","buyQty":1,"getQty":1}'),
+        dict(name="showOnShopProfile", type="boolean", required=True,
+             prompt="Should it show on your shop profile?"),
+        dict(name="description", type="string", required=False,
+             prompt="Anything to add about it?"),
+        dict(name="validity", type="object", required=False,
+             prompt="Until when should it run?",
+             example='{"isLimited":true,"endDate":"2026-08-31T23:59:59Z"}'),
+        dict(name="redeemLimit", type="integer", required=False,
+             prompt="How many times can one customer use it?"),
+        dict(name="totalRedeemLimit", type="integer", required=False,
+             prompt="How many customers in total?"),
+        dict(name="target", type="object", required=False,
+             prompt="Everyone, or particular customers?"),
     ],
-    returns=dict(success=["offer_id", "status", "live_from"], errors={
-        409: "An offer with that name is already running.",
-        422: "That discount is larger than your plan allows."}),
+    returns=dict(success=["id", "offerKind", "offerType", "status", "validTill"], errors={
+        400: "Something in the deal was not valid — check the item name and quantities.",
+        401: "That MPIN was not right."}),
     utterances=[
-        "start a 20% off sale",
-        "create an offer for diwali",
-        "give 100 rupees off on orders above 500",
-        "मुझे 20% का ऑफर बनाना है",
-        "put my shop on discount this weekend",
-        "i want to run a sale",
-        "discount lagana hai",
-        "make everything 15 percent cheaper till sunday",
+        "buy one get one free on coffee",
+        "start a bogo offer",
+        "ek ke saath ek free karna hai",
+        "free dessert on bills above 500",
+        "make a combo deal on my items",
+        "bundle two items together at one price",
+        "give a free item with every order over 300",
+        "BOGO offer chalu karo",
     ]),
 
 dict(
-    api_id="offers.update", domain="offers", title="Change an offer",
-    method="PATCH", path="/v1/merchant/offers/{offer_id}",
-    mpin_required=False, idempotent=True,
-    body="""Changes a discount that is already running — its value, its end date,
-or what it applies to. The change takes effect immediately.
+    api_id="offers.discount.create", domain="offers", title="Create a discount",
+    method="POST", path="/v1/merchant/{merchantId}/mpin-actions",
+    mpin_required=True, idempotent=False,
+    constants={"purpose": "DISCOUNT_CREATE"},
+    body_root="payload",
+    body="""Creates a discount — an offer that takes money off the bill, either a
+percentage or a flat amount. Can carry a minimum bill, a happy-hours window, and
+caps on how often it is used.
 
-For a brand new discount use `offers.create`. To end one early use
-`offers.deactivate`.""",
+A discount changes the price. If the customer is getting extra goods instead —
+buy one get one, a bundle, a free item — that is `offers.deal.create`. Merchants
+call both "offers", so ask which they mean when it is not clear.""",
     fields=[
-        dict(name="offer_id", type="string", required=True,
-             prompt="Which offer should I change?"),
-        dict(name="discount_value", type="number", required=False,
-             prompt="What should the new discount be?"),
-        dict(name="valid_until", type="date", required=False,
-             prompt="When should it end now?"),
+        dict(name="name", type="string", required=True,
+             prompt="What should the discount be called?", example="Flat 10% Off"),
+        dict(name="discountType", type="enum", required=True,
+             values=["PERCENTAGE", "FLAT"],
+             prompt="A percentage off, or a flat amount off?"),
+        dict(name="discountValue", type="number", required=True,
+             prompt="How much off?", example=10),
+        dict(name="maxAmount", type="number", required=False,
+             prompt="Cap the saving at any amount?"),
+        dict(name="rules", type="object", required=False,
+             prompt="Any minimum bill for it to apply?",
+             example='{"appliesOn":"PAYMENT_AMOUNT","minBillAmount":500}'),
+        dict(name="validity", type="object", required=False,
+             prompt="Until when should it run?"),
+        dict(name="happyHours", type="object", required=False,
+             prompt="Only during certain hours?", example='{"startTime":"16:00","endTime":"19:00"}'),
+        dict(name="appliesOnWeekends", type="boolean", required=False,
+             prompt="Should the happy hours apply at weekends too?"),
+        dict(name="showOnShopProfile", type="boolean", required=False,
+             prompt="Should it show on your shop profile?"),
+        dict(name="redeemLimit", type="integer", required=False,
+             prompt="How many times can one customer use it?"),
+        dict(name="totalRedeemLimit", type="integer", required=False,
+             prompt="How many customers in total?"),
+        dict(name="target", type="object", required=False,
+             prompt="Everyone, or particular customers?"),
     ],
-    returns=dict(success=["offer_id", "updated_fields"], errors={
-        404: "I could not find that offer.",
-        409: "That offer has already ended and cannot be changed."}),
+    returns=dict(success=["id", "offerKind", "discountType", "status", "validTill"], errors={
+        400: "A percentage cannot be over 100, and a flat amount cannot exceed the minimum bill.",
+        401: "That MPIN was not right."}),
     utterances=[
-        "change my offer to 30 percent",
-        "extend my sale by a week",
-        "edit the diwali offer",
-        "offer ki date badha do",
-        "make the discount bigger",
-        "modify a running offer",
-        "my sale should end tomorrow instead",
+        "start a 20% off sale",
+        "flat 100 rupees off above 500",
+        "मुझे 20% की छूट देनी है",
+        "discount lagana hai",
+        "10 percent off during happy hours",
+        "put my whole shop on discount this weekend",
+        "give money off on orders above 1000",
+        "sabko 15 percent kam kar do",
     ]),
 
 dict(
     api_id="offers.list", domain="offers", title="See my offers",
-    method="GET", path="/v1/merchant/offers",
+    method="GET", path="/v1/merchant/{merchantId}/offers",
     mpin_required=False, idempotent=True,
-    body="""Lists the shop's discounts — running, scheduled and finished — with
-how much each one has been used.
+    body="""Lists the shop's offers — deals and discounts together — with their
+status and how much each has been used. `offerKind` narrows it to one or the
+other.
 
-For coupon codes specifically, this returns them too, marked as coupons.""",
+This reads them. Making one is `offers.deal.create` or
+`offers.discount.create`.""",
     fields=[
+        dict(name="offerKind", type="enum", required=False, values=["DEAL", "DISCOUNT"],
+             prompt="Deals, discounts, or both?", **{"in": "query"}),
         dict(name="status", type="enum", required=False,
-             values=["live", "scheduled", "ended"],
-             prompt="Running ones, upcoming ones, or all of them?"),
+             values=["DRAFT", "SCHEDULED", "ACTIVE", "INACTIVE", "EXPIRED"],
+             prompt="Running ones, upcoming ones, or all of them?", **{"in": "query"}),
     ],
     returns=dict(success=["offers", "total"], errors={}),
     utterances=[
         "what offers do i have running",
-        "show my discounts",
+        "show my discounts and deals",
         "kaun se offer chal rahe hain",
         "list all my sales",
         "do i have any offer on right now",
@@ -270,56 +332,57 @@ For coupon codes specifically, this returns them too, marked as coupons.""",
     ]),
 
 dict(
-    api_id="offers.deactivate", domain="offers", title="Stop an offer",
-    method="POST", path="/v1/merchant/offers/{offer_id}/deactivate",
+    api_id="offers.update", domain="offers", title="Change an offer",
+    method="PATCH", path="/v1/merchant/{merchantId}/offers/{offerId}",
     mpin_required=False, idempotent=True,
-    body="""Ends a running discount straight away. The offer stays in the history
-with everything it earned, it simply stops applying to new orders.
+    body="""Changes an offer that already exists — its validity, its caps, or
+whether it shows on the shop profile. Works for both deals and discounts.
+
+For a brand new one use `offers.deal.create` or `offers.discount.create`. To end
+one early use `offers.deactivate`.""",
+    fields=[
+        dict(name="offerId", type="string", required=True,
+             prompt="Which offer should I change?", **{"in": "path"}),
+        dict(name="validity", type="object", required=False,
+             prompt="When should it end now?"),
+        dict(name="redeemLimit", type="integer", required=False,
+             prompt="What should the per-customer limit be?"),
+        dict(name="showOnShopProfile", type="boolean", required=False,
+             prompt="Show it on your shop profile?"),
+    ],
+    returns=dict(success=["id", "status", "validTill"], errors={
+        404: "I could not find that offer.",
+        409: "That offer has already expired and cannot be changed."}),
+    utterances=[
+        "extend my sale by a week",
+        "edit the diwali offer",
+        "offer ki date badha do",
+        "change the limit on my running offer",
+        "modify an offer i already made",
+        "my offer should end tomorrow instead",
+    ]),
+
+dict(
+    api_id="offers.deactivate", domain="offers", title="Stop an offer",
+    method="POST", path="/v1/merchant/{merchantId}/offers/{offerId}/deactivate",
+    mpin_required=False, idempotent=True,
+    body="""Ends a running offer straight away, deal or discount. It stays in the
+history with everything it earned, it simply stops applying to new orders.
 
 This stops it. To change it rather than stop it, use `offers.update`.""",
     fields=[
-        dict(name="offer_id", type="string", required=True,
-             prompt="Which offer should I stop?"),
+        dict(name="offerId", type="string", required=True,
+             prompt="Which offer should I stop?", **{"in": "path"}),
     ],
-    returns=dict(success=["offer_id", "ended_at"], errors={
+    returns=dict(success=["id", "status"], errors={
         404: "I could not find that offer."}),
     utterances=[
         "stop my offer",
         "end the sale now",
         "offer band kar do",
         "cancel the discount i started",
-        "turn off my diwali offer",
-        "i don't want the discount anymore",
-    ]),
-
-dict(
-    api_id="offers.coupon.create", domain="offers", title="Create a coupon code",
-    method="POST", path="/v1/merchant/offers/coupons",
-    mpin_required=False, idempotent=False,
-    body="""Creates a code the customer types at checkout to get a discount, with
-an optional limit on how many times it can be used.
-
-A coupon needs the customer to enter something. For a discount that applies by
-itself with no code, use `offers.create`.""",
-    fields=[
-        dict(name="code", type="string", required=True, max_length=16,
-             prompt="What should the coupon code be?", example="DIWALI20"),
-        dict(name="discount_type", type="enum", required=True, values=["percentage", "flat"],
-             prompt="Percentage off, or a flat amount off?"),
-        dict(name="discount_value", type="number", required=True,
-             prompt="How much off?"),
-        dict(name="usage_limit", type="integer", required=False,
-             prompt="How many times can it be used in total?"),
-    ],
-    returns=dict(success=["coupon_id", "code", "status"], errors={
-        409: "That code is already in use."}),
-    utterances=[
-        "create a coupon code",
-        "make a promo code for my customers",
-        "i want a code like DIWALI20",
-        "coupon banana hai",
-        "give customers a code for 10% off",
-        "set up a discount code with a usage limit",
+        "turn off my diwali deal",
+        "i don't want the offer anymore",
     ]),
 
 # ═══════════════════════════ khata ═══════════════════════════
@@ -917,6 +980,226 @@ This is the analysis. The plain list of customers is `customers.list`.""",
         "am i getting repeat customers",
         "show me customer trends",
     ]),
+
+# ═══════════════════════════ weather ═══════════════════════════
+#
+# Real, public, key-free APIs. Everything above is synthetic and cannot be
+# called; these can. They exist so an orchestrator can be tested end to end —
+# resolve a message, build the request, actually hit it, and answer from a real
+# response — before the merchant APIs exist to call.
+#
+# All verified responding on 19 August 2026. They need a User-Agent header;
+# several of them return 403 to a bare urllib default.
+
+dict(
+    api_id="weather.current", domain="weather", title="Current weather",
+    method="GET", path="/v1/forecast",
+    base_url="https://api.open-meteo.com",
+    real=True, mpin_required=False, idempotent=True,
+    constants={"current": "temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"},
+    body="""Current temperature, humidity, wind and conditions for a latitude and
+longitude, from Open-Meteo. No API key.
+
+It needs coordinates, not a place name. Turn a name into coordinates with
+`weather.geocode` first.""",
+    fields=[
+        dict(name="latitude", type="number", required=True,
+             prompt="Which place? I need its latitude.", example=28.61, **{"in": "query"}),
+        dict(name="longitude", type="number", required=True,
+             prompt="And its longitude?", example=77.21, **{"in": "query"}),
+        dict(name="timezone", type="string", required=False,
+             prompt="Which timezone should times be in?", example="Asia/Kolkata",
+             **{"in": "query"}),
+    ],
+    returns=dict(success=["current.temperature_2m", "current.weather_code",
+                          "current.wind_speed_10m"],
+                 errors={400: "Those coordinates were not valid."}),
+    utterances=[
+        "what's the weather like",
+        "aaj mausam kaisa hai",
+        "is it raining right now",
+        "how hot is it outside",
+        "temperature kya hai abhi",
+        "tell me the current weather",
+        "kitni garmi hai aaj",
+    ]),
+
+dict(
+    api_id="weather.geocode", domain="weather", title="Find a place's coordinates",
+    method="GET", path="/v1/search",
+    base_url="https://geocoding-api.open-meteo.com",
+    real=True, mpin_required=False, idempotent=True,
+    body="""Turns a place name into coordinates, country and timezone. From
+Open-Meteo. No API key.
+
+Usually the first step before `weather.current` or `weather.air_quality`, both of
+which need latitude and longitude rather than a name.""",
+    fields=[
+        dict(name="name", type="string", required=True,
+             prompt="Which town or city?", example="Delhi", **{"in": "query"}),
+        dict(name="count", type="integer", required=False, default=1,
+             prompt="How many matches should I bring back?", **{"in": "query"}),
+    ],
+    returns=dict(success=["results[].latitude", "results[].longitude",
+                          "results[].country", "results[].timezone"],
+                 errors={}),
+    utterances=[
+        "where is bengaluru exactly",
+        "find the coordinates of a city",
+        "look up a place",
+        "what are the lat long for mumbai",
+        "geocode this town for me",
+    ]),
+
+dict(
+    api_id="weather.air_quality", domain="weather", title="Air quality",
+    method="GET", path="/v1/air-quality",
+    base_url="https://air-quality-api.open-meteo.com",
+    real=True, mpin_required=False, idempotent=True,
+    constants={"current": "pm2_5,pm10,us_aqi"},
+    body="""Current PM2.5, PM10 and US AQI for a latitude and longitude, from
+Open-Meteo. No API key.
+
+Air quality, not weather — for temperature and rain use `weather.current`.""",
+    fields=[
+        dict(name="latitude", type="number", required=True,
+             prompt="Which place? I need its latitude.", example=28.61, **{"in": "query"}),
+        dict(name="longitude", type="number", required=True,
+             prompt="And its longitude?", example=77.21, **{"in": "query"}),
+    ],
+    returns=dict(success=["current.pm2_5", "current.pm10", "current.us_aqi"], errors={}),
+    utterances=[
+        "how bad is the air today",
+        "what is the aqi right now",
+        "pollution kaisa hai aaj",
+        "is the air quality safe outside",
+        "check pm2.5 levels",
+    ]),
+
+dict(
+    api_id="weather.sun_times", domain="weather", title="Sunrise and sunset",
+    method="GET", path="/json",
+    base_url="https://api.sunrise-sunset.org",
+    real=True, mpin_required=False, idempotent=True,
+    constants={"formatted": "0"},
+    body="""Sunrise, sunset, solar noon and day length for a latitude and
+longitude. No API key. Times come back in UTC when formatted=0.""",
+    fields=[
+        dict(name="lat", type="number", required=True,
+             prompt="Which place? I need its latitude.", example=28.61, **{"in": "query"}),
+        dict(name="lng", type="number", required=True,
+             prompt="And its longitude?", example=77.21, **{"in": "query"}),
+        dict(name="date", type="date", required=False, default="today",
+             prompt="Which date?", **{"in": "query"}),
+    ],
+    returns=dict(success=["results.sunrise", "results.sunset", "results.day_length"],
+                 errors={}),
+    utterances=[
+        "what time does the sun set today",
+        "sunrise kab hoga",
+        "when does it get dark",
+        "how long is daylight today",
+        "tell me sunset time",
+    ]),
+
+# ═══════════════════════════ reference ═══════════════════════════
+
+dict(
+    api_id="reference.exchange_rate", domain="reference", title="Currency exchange rate",
+    method="GET", path="/latest",
+    base_url="https://api.frankfurter.app",
+    real=True, mpin_required=False, idempotent=True,
+    body="""Reference exchange rates published by the European Central Bank, via
+Frankfurter. No API key. Rates update on working days only.""",
+    fields=[
+        dict(name="from", type="string", required=True,
+             prompt="Converting from which currency?", example="USD", **{"in": "query"}),
+        dict(name="to", type="string", required=False,
+             prompt="Into which currency?", example="INR", **{"in": "query"}),
+        dict(name="amount", type="number", required=False, default=1,
+             prompt="How much?", **{"in": "query"}),
+    ],
+    returns=dict(success=["base", "date", "rates"], errors={
+        404: "One of those currency codes is not recognised."}),
+    utterances=[
+        "what is the dollar rate today",
+        "convert 100 usd to rupees",
+        "dollar ka rate kya hai",
+        "exchange rate for euro",
+        "how many rupees is one pound",
+    ]),
+
+dict(
+    api_id="reference.crypto_price", domain="reference", title="Crypto price",
+    method="GET", path="/api/v3/simple/price",
+    base_url="https://api.coingecko.com",
+    real=True, mpin_required=False, idempotent=True,
+    body="""Current price of a cryptocurrency in one or more currencies, from
+CoinGecko's public tier. No API key, but it is rate limited — expect a 429 under
+load.""",
+    fields=[
+        dict(name="ids", type="string", required=True,
+             prompt="Which coin?", example="bitcoin", **{"in": "query"}),
+        dict(name="vs_currencies", type="string", required=True,
+             prompt="Priced in which currency?", example="inr", **{"in": "query"}),
+    ],
+    returns=dict(success=["{coin}.{currency}"], errors={
+        429: "CoinGecko is rate limiting — try again in a minute."}),
+    utterances=[
+        "what is bitcoin trading at",
+        "bitcoin ka rate batao",
+        "price of ethereum in rupees",
+        "how much is one bitcoin today",
+        "crypto price check",
+    ]),
+
+dict(
+    api_id="reference.define_word", domain="reference", title="Define a word",
+    method="GET", path="/api/v2/entries/en/{word}",
+    base_url="https://api.dictionaryapi.dev",
+    real=True, mpin_required=False, idempotent=True,
+    body="""English dictionary definition, pronunciation and examples for a word.
+No API key.""",
+    fields=[
+        dict(name="word", type="string", required=True,
+             prompt="Which word?", example="discount", **{"in": "path"}),
+    ],
+    returns=dict(success=["[].meanings[].definitions[].definition", "[].phonetic"],
+                 errors={404: "No definition found for that word."}),
+    utterances=[
+        "what does this word mean",
+        "define invoice for me",
+        "iska matlab kya hai",
+        "look up the meaning of a word",
+        "spelling and meaning of a word",
+    ]),
+
+dict(
+    api_id="reference.public_holidays", domain="reference", title="Public holidays",
+    method="GET", path="/api/v3/PublicHolidays/{year}/{countryCode}",
+    base_url="https://date.nager.at",
+    real=True, mpin_required=False, idempotent=True,
+    body="""Public holidays for a country and year, from Nager.Date. No API key.
+
+Coverage is uneven — some countries return 204 with no body rather than a list.
+Treat an empty response as "not covered", not as "no holidays".""",
+    fields=[
+        dict(name="year", type="integer", required=True,
+             prompt="Which year?", example=2026, **{"in": "path"}),
+        dict(name="countryCode", type="string", required=True,
+             prompt="Which country? I need the two-letter code.", example="US",
+             **{"in": "path"}),
+    ],
+    returns=dict(success=["[].date", "[].localName", "[].name"], errors={
+        204: "That country and year are not covered."}),
+    utterances=[
+        "when is the next public holiday",
+        "list the holidays this year",
+        "chutti kab kab hai",
+        "what are the bank holidays",
+        "show me the holiday calendar",
+    ]),
+
 ]
 
 
@@ -934,20 +1217,37 @@ def yaml_scalar(value) -> str:
 
 
 def render(api: dict) -> str:
-    lines = ["---", "type: api", "status: example  # synthetic seed data — replace with the real contract"]
+    lines = ["---", "type: api"]
+    if api.get("real"):
+        lines.append("status: live  # a real public API — this one can actually be called")
+    else:
+        lines.append("status: example  # synthetic seed data — replace with the real contract")
     for key in ("api_id", "domain", "method", "path"):
         lines.append(f"{key}: {yaml_scalar(api[key])}")
     lines.append(f"title: {yaml_scalar(api['title'])}")
+    if api.get("base_url"):
+        lines.append(f"base_url: {yaml_scalar(api['base_url'])}")
     lines.append(f"mpin_required: {yaml_scalar(api['mpin_required'])}")
     lines.append(f"idempotent: {yaml_scalar(api['idempotent'])}")
     lines.append("version: 1")
     lines.append("last_verified: 2026-08-19")
 
+    if api.get("body_root"):
+        lines.append(f"body_root: {yaml_scalar(api['body_root'])}")
+
+    if api.get("constants"):
+        lines.append("")
+        lines.append("# Sent on every call, whatever the merchant said. The path alone")
+        lines.append("# does not identify this action; these values do.")
+        lines.append("constants:")
+        for key, value in api["constants"].items():
+            lines.append(f"  {key}: {yaml_scalar(value)}")
+
     lines.append("")
     lines.append("fields:")
     for field in api["fields"]:
         lines.append(f"  - name: {yaml_scalar(field['name'])}")
-        for key in ("type", "required", "prompt", "example", "default", "max_length"):
+        for key in ("type", "required", "in", "prompt", "example", "default", "max_length"):
             if key in field:
                 lines.append(f"    {key}: {yaml_scalar(field[key])}")
         if "values" in field:
@@ -955,7 +1255,11 @@ def render(api: dict) -> str:
 
     lines.append("")
     lines.append("returns:")
-    lines.append("  success: [%s]" % ", ".join(api["returns"]["success"]))
+    # Quoted through yaml_scalar: response paths like `[].date` and
+    # `{coin}.{currency}` start a flow sequence or mapping if left bare, and the
+    # whole front matter is then discarded as malformed.
+    lines.append("  success: [%s]"
+                 % ", ".join(yaml_scalar(v) for v in api["returns"]["success"]))
     if api["returns"]["errors"]:
         lines.append("  errors:")
         for code, message in api["returns"]["errors"].items():

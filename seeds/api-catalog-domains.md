@@ -11,3 +11,5 @@ thinks about their day, not the way the backend is factored.
 - **customers** (3 APIs) — The people who buy from the shop.
 - **store** (4 APIs) — The shop itself — profile, timings, delivery area.
 - **reports** (3 APIs) — Summaries and insights about how the shop is doing.
+- **weather** (4 APIs) — Weather, air quality and daylight for a place.
+- **reference** (4 APIs) — Look-ups — exchange rates, crypto prices, words, holidays.
