@@ -1,0 +1,26 @@
+# Deployment for the EC2 host that already runs Postgres.
+#
+# network_mode: host is deliberate. The database listens on localhost:5434 on
+# the host and is not exposed to the network, so a bridged container could not
+# reach it without either publishing Postgres or adding a tunnel. Sharing the
+# host network keeps the database private and lets DATABASE_URL stay pointed at
+# localhost, exactly as it is in development.
+
+services:
+  chotu-rag:
+    build: .
+    image: chotu-rag:latest
+    container_name: chotu-rag
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env
+    volumes:
+      # Mounted read-write because rotating the embedding API key from the
+      # Settings page writes it back here so it survives a restart.
+      - ./.env:/app/.env:rw
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

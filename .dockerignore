@@ -1,0 +1,22 @@
+# Local environments — never bake secrets or host-specific config into an image
+.env
+venv/
+.venv/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Repo noise
+.git/
+.gitignore
+tests/
+docs/
+sql/
+*.md
+!README.md
