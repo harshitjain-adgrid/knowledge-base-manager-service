@@ -7,6 +7,11 @@ Measured 19 August 2026 against the 41-card catalogue and 22 product documents.
 Re-run after any change to the content, the chunking, or the thresholds. A drop
 against these numbers is a regression.
 
+Measured through `/search`. The knowledge base retrieves; the collapsing and
+ranking that turn chunk hits into one API live in `selection.py` beside the
+evaluation, because that decision belongs to the orchestrator rather than to
+this service.
+
 ```
 PRODUCT KNOWLEDGE  (recall@5)
   easy          19/19  100.0%

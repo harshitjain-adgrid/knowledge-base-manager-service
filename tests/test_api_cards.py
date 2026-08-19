@@ -1,9 +1,9 @@
 """
-Tests for API cards and the action-selection pipeline's pure logic.
+Tests for API cards: what a card must contain, and how it is chunked.
 
-The retrieval half — whether the right API actually comes back for a real
-message — cannot be asserted here, because it depends on an embedding model and
-a populated catalogue. That is measured instead, against a labelled set, by
+Whether the right card actually comes back for a real message cannot be
+asserted here — that depends on an embedding model and a populated
+catalogue, and is measured instead against a labelled set by
 seeds/eval/run_eval.py. What is tested here is everything that has to hold
 regardless of what the model returns.
 """
@@ -17,7 +17,6 @@ from app.services.chunking_service import (
     chunk_tool_card,
     validate_tool_card,
 )
-from app.services.tool_selection import _aggregate_by_api, _rank_domains
 
 
 def card(**overrides) -> dict:
@@ -168,104 +167,6 @@ def test_both_spellings_of_the_doc_type_reach_the_card_chunker(doc_type):
 def test_prose_is_still_chunked_as_prose():
     chunks = chunk_document("# H\n\nSome prose.", "text", None, "T", 4000)
     assert chunks[0].metadata["chunk_type"] == "text"
-
-
-# ── Aggregation ──────────────────────────────────────────────────────────────
-
-def hit(api_id, similarity, kind="card", domain="offers", content="x"):
-    return {
-        "chunk_id": f"c-{api_id}-{similarity}",
-        "document_id": f"d-{api_id}",
-        "document_title": api_id,
-        "doc_type": "api",
-        "folder_path": f"/{domain}/",
-        "chunk_index": 0,
-        "content": content,
-        "similarity": similarity,
-        "metadata": {"api_id": api_id, "domain": domain, "chunk_kind": kind,
-                     "method": "POST", "path": "/x"},
-    }
-
-
-def test_several_chunks_of_one_api_collapse_to_a_single_candidate():
-    # Otherwise one verbose API would fill every candidate slot with itself.
-    candidates = _aggregate_by_api([
-        hit("offers.create", 0.81),
-        hit("offers.create", 0.88, kind="utterance"),
-        hit("offers.create", 0.75, kind="utterance"),
-    ])
-    assert len(candidates) == 1
-    assert candidates[0].score == 0.88
-    assert candidates[0].matched_kind == "utterance"
-
-
-def test_candidates_come_back_strongest_first():
-    candidates = _aggregate_by_api([
-        hit("a.one", 0.60), hit("b.two", 0.90), hit("c.three", 0.75),
-    ])
-    assert [c.api_id for c in candidates] == ["b.two", "c.three", "a.one"]
-
-
-def test_a_chunk_with_no_api_id_is_ignored():
-    # A stray prose document in the catalogue knowledge base must never be
-    # offered as something to execute.
-    stray = hit("x.y", 0.99)
-    stray["metadata"] = {"domain": "offers"}
-    candidates = _aggregate_by_api([stray, hit("offers.create", 0.70)])
-    assert [c.api_id for c in candidates] == ["offers.create"]
-
-
-def test_required_field_names_are_lifted_out_of_the_contract():
-    row = hit("offers.create", 0.9)
-    row["metadata"]["fields"] = [
-        {"name": "offer_name", "required": True},
-        {"name": "note", "required": False},
-        {"name": "discount", "required": True},
-    ]
-    assert _aggregate_by_api([row])[0].required_fields == ["offer_name", "discount"]
-
-
-def test_the_whole_contract_travels_with_the_candidate():
-    # So the caller can start filling the form without a second request.
-    row = hit("offers.create", 0.9)
-    row["metadata"]["mpin_required"] = True
-    candidate = _aggregate_by_api([row])[0]
-    assert candidate.mpin_required is True
-    assert candidate.contract["path"] == "/x"
-
-
-# ── Domain ranking ───────────────────────────────────────────────────────────
-
-def test_a_domain_is_scored_by_its_best_api_not_its_average():
-    # Averaging punishes a complete domain for the APIs that did not match,
-    # so the more thoroughly a domain is documented the worse it would rank.
-    candidates = _aggregate_by_api([
-        hit("offers.create", 0.90, domain="offers"),
-        hit("offers.list", 0.20, domain="offers"),
-        hit("offers.update", 0.20, domain="offers"),
-        hit("khata.balance.get", 0.55, domain="khata"),
-    ])
-    ranked = _rank_domains(candidates)
-    assert ranked[0]["domain"] == "offers"
-    assert ranked[0]["score"] == 0.90
-
-
-def test_hit_count_breaks_a_tie_between_domains():
-    candidates = _aggregate_by_api([
-        hit("offers.create", 0.80, domain="offers"),
-        hit("offers.list", 0.70, domain="offers"),
-        hit("khata.balance.get", 0.80, domain="khata"),
-    ])
-    assert _rank_domains(candidates)[0]["domain"] == "offers"
-
-
-def test_every_domain_present_is_ranked():
-    candidates = _aggregate_by_api([
-        hit("a.one", 0.9, domain="offers"),
-        hit("b.two", 0.8, domain="khata"),
-        hit("c.three", 0.7, domain="orders"),
-    ])
-    assert {d["domain"] for d in _rank_domains(candidates)} == {"offers", "khata", "orders"}
 
 
 # ── The needs line ───────────────────────────────────────────────────────────

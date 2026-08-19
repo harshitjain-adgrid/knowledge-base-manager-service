@@ -26,12 +26,8 @@ from app.api.schemas import (
     EmbeddingSettingsResponse,
     ApiKeyUpdate,
     ApiKeyUpdateResponse,
-    ActionResolveRequest,
-    ActionResolveResponse,
-    ActionCandidate,
-    DomainScore,
 )
-from app.services import knowledge_service, tool_selection
+from app.services import knowledge_service
 from app.services.embedding_service import (
     MODEL_SPECS,
     generate_embedding,
@@ -303,77 +299,6 @@ async def search_knowledge_base(
             detail=f"Search failed. Please check the logs. "
                    f"Request ID: {request_id}",
         )
-
-
-@router.post(
-    "/actions/resolve",
-    response_model=ActionResolveResponse,
-    summary="Resolve a merchant message to an API",
-    description=(
-        "Given what a merchant said, identify which API in this knowledge base "
-        "they are asking for — or report that nothing matched well enough. "
-        "Selection only. This service never calls the API it selects; it returns "
-        "the contract so the caller can. Deterministic apart from embedding the "
-        "message, so the same message against the same catalogue always resolves "
-        "the same way. "
-        "Branch on `confidence`: `high` means act, `ambiguous` means ask which of "
-        "the top two was meant, `low` means treat the message as a question."
-    ),
-    responses={500: {"model": ErrorResponse}},
-)
-async def resolve_action(
-    payload: ActionResolveRequest,
-    request: Request,
-    context: KbContext = Depends(resolve_kb),
-    db: AsyncSession = Depends(kb_readonly_db),
-):
-    try:
-        resolution = await tool_selection.resolve_action(
-            db=db,
-            profile=context.profile,
-            message=payload.message,
-            top_k=payload.top_k,
-            pool_size=settings.action_pool_size,
-            min_score=(
-                payload.min_score
-                if payload.min_score is not None
-                else settings.action_min_score
-            ),
-            decision_margin=(
-                payload.decision_margin
-                if payload.decision_margin is not None
-                else settings.action_decision_margin
-            ),
-            domain_margin=(
-                payload.domain_margin
-                if payload.domain_margin is not None
-                else settings.action_domain_margin
-            ),
-            max_domains=settings.action_max_domains,
-        )
-    except Exception as e:
-        request_id = getattr(request.state, "request_id", None)
-        logger.error(f"[{request_id}] Action resolution failed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Could not resolve the message. Request ID: {request_id}",
-        )
-
-    return ActionResolveResponse(
-        query=resolution.query,
-        knowledge_base=resolution.knowledge_base,
-        confidence=resolution.confidence,
-        reason=resolution.reason,
-        candidates=[ActionCandidate(**vars(c)) for c in resolution.candidates],
-        domains_ranked=[DomainScore(**d) for d in resolution.domains_ranked],
-        domains_kept=resolution.domains_kept,
-        domain_filter_applied=resolution.domain_filter_applied,
-        fallback_used=resolution.fallback_used,
-        top_score=resolution.top_score,
-        margin=resolution.margin,
-        embed_ms=resolution.embed_ms,
-        search_ms=resolution.search_ms,
-    )
 
 
 @router.get(

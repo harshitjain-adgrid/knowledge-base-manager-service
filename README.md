@@ -351,32 +351,17 @@ different value — chunk size above all, since a tool card that splits returns
 half a tool. Separation also means the catalogue can be rebuilt when the backend
 ships without touching product knowledge.
 
-### Selecting an action
+### What this service does not do
 
-`POST /api/v1/actions/resolve` turns a merchant message into the API it asked
-for. **Selection only** — this service never calls what it selects.
+**It never calls the APIs in the catalogue.** The only outbound requests it makes
+are to the embedding provider and to Postgres. It stores cards, retrieves them,
+and shows the team what a query returns.
 
-1. Embed the message once.
-2. Search the **whole** catalogue — cards and example utterances together.
-3. Collapse hits to one candidate per API, scored by its best chunk.
-4. Rank domains by their strongest API; those close to the best stay in play.
-5. If narrowing leaves too little, use the unfiltered ranking — already computed,
-   so the fallback is free.
-6. Return a confidence: `high` act, `ambiguous` ask, `low` treat as a question.
-
-Searching first and narrowing second is deliberate. Narrowing first means that
-when the domain ranking is wrong the right API is unreachable, turning a ranking
-error into a confident wrong action. There are no keyword lists anywhere in this
-path — domains are inferred from where the evidence lands.
-
-Everything after step 1 is deterministic, so the same message always resolves
-the same way and a regression is visible.
-
-**One thing it cannot do.** It cannot reliably separate *"show me my
-settlements"* from *"explain how settlements work"* — measured, not assumed; see
-below. The two are nearly identical in embedding space. Question-versus-instruction
-is the orchestrator's intent step and belongs **before** this call; `confidence`
-is a safety net for that classifier, not a replacement.
+Selecting an action at runtime and calling it is the orchestrator's job — a
+separate system that reads the same pgvector database. `seeds/eval/selection.py`
+is a readable reference for the collapsing and ranking that turns chunk hits into
+one API, and `seeds/eval/run_eval.py` uses it to measure whether the catalogue
+retrieves correctly.
 
 The format the backend team fills in:
 **[docs/API_CATALOG_GUIDE.md](docs/API_CATALOG_GUIDE.md)**.

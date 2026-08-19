@@ -23,9 +23,10 @@ seeds/
     getting-started/  catalog/  offers/  khata/
     orders/  payments/  store/  reports/
 
-  api-catalog/                 33 API cards → the "api-catalog" knowledge base
-    catalog/  offers/  khata/  orders/
-    payments/  customers/  store/  reports/
+  api-catalog/                 41 API cards → the "api-catalog" knowledge base
+    catalog/  offers/  khata/  orders/  payments/
+    customers/  store/  reports/       synthetic — cannot be called
+    weather/  reference/               real public APIs — can be called
 
   api-catalog-domains.md       what each domain covers
   build_product_kb.py          regenerates product/
@@ -34,8 +35,10 @@ seeds/
 
   eval/
     product_queries.yaml       41 questions → the document that should answer them
-    action_queries.yaml        63 messages  → the API that should be selected
+    action_queries.yaml        81 messages  → the API that should be retrieved
+    selection.py               collapses chunk hits into one API per candidate
     run_eval.py                scores both, and sweeps thresholds
+    BASELINE.md                the numbers to measure regressions against
 ```
 
 The two `build_*.py` scripts hold the content as data and emit the markdown.
@@ -63,8 +66,12 @@ python seeds/load_seeds.py --base http://127.0.0.1:8000 --only api
 ```
 
 Loading is idempotent by title — running it twice replaces rather than
-duplicates. Expect around four minutes for the catalogue: 242 chunks, paced
+duplicates. Expect around four minutes for the catalogue: 293 chunks, paced
 against the embedding provider's rate limit.
+
+The free embedding tier allows 1,000 requests a day and each text counts as one,
+so a full catalogue reload is 293 of them. Reading is cheap; ingestion is what
+exhausts the quota.
 
 ---
 
@@ -89,6 +96,22 @@ that actually matter.
 Every evaluation query is a **paraphrase**. None is copied from a card's
 `utterances` list — a test that feeds a string back to the index containing it
 measures nothing but that cosine similarity works.
+
+### Where the selection logic lives
+
+`selection.py` holds the part that turns chunk hits into one candidate per API —
+collapsing several chunks of the same card, ranking domains, and deciding
+between act, ask and decline.
+
+It sits in the evaluation tooling rather than in the service on purpose. **The
+knowledge base stores and retrieves; deciding what to do with a retrieval, and
+calling anything, belongs to the orchestrator** — a separate system that reads
+the same pgvector database. What is needed here is measurement, and measuring
+whether the catalogue retrieves correctly needs the same collapsing the
+orchestrator will do.
+
+It is also the clearest available description of that shape, for whoever builds
+the orchestrator.
 
 ### The sweep
 

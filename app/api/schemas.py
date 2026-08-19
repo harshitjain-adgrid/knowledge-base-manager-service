@@ -56,7 +56,11 @@ class DocumentUpdate(BaseModel):
 class SearchRequest(BaseModel):
     """Schema for similarity search."""
     query: str = Field(..., min_length=1, examples=["How to process a refund?"])
-    top_k: int = Field(default=5, ge=1, le=50)
+    # The ceiling is generous because a caller may be collapsing chunks rather
+    # than reading them. An API card is a description plus one chunk per example
+    # utterance, so fifty chunks can be as few as five distinct APIs — too
+    # shallow to rank anything on.
+    top_k: int = Field(default=5, ge=1, le=200)
     doc_type: DocTypeField | None = Field(
         default=None,
         description="Optional filter to search only one kind of document.",
@@ -431,94 +435,3 @@ class EmbeddingModelsResponse(BaseModel):
     """Models available when creating a knowledge base."""
 
     models: list[EmbeddingModelOption]
-
-
-# ── Action resolution ──
-#
-# The read path the orchestrator uses once it has decided a message is an
-# instruction rather than a question. It selects; it never executes — hitting
-# the API is the orchestrator's job, and deliberately not this service's.
-
-
-class ActionResolveRequest(BaseModel):
-    """A merchant message to resolve against an API catalogue."""
-
-    message: str = Field(
-        ..., min_length=1, max_length=2000,
-        examples=["start a 20% off sale this weekend"],
-        description="What the merchant said, verbatim. Do not summarise it — "
-                    "the phrasing is the signal.",
-    )
-    top_k: int = Field(default=5, ge=1, le=20)
-
-    # Thresholds are per-request so they can be swept during evaluation without
-    # a redeploy. Omitted, each falls back to the server's calibrated default.
-    min_score: float | None = Field(
-        default=None, ge=0.0, le=1.0,
-        description="Below this, no action is confident enough to take.",
-    )
-    decision_margin: float | None = Field(
-        default=None, ge=0.0, le=1.0,
-        description="First and second place closer than this means ask, not act.",
-    )
-    domain_margin: float | None = Field(
-        default=None, ge=0.0, le=1.0,
-        description="How close a domain must be to the best one to stay in play.",
-    )
-
-
-class ActionCandidate(BaseModel):
-    """One API that might be what was asked for."""
-
-    api_id: str
-    domain: str
-    method: str
-    path: str
-    title: str
-    document_id: str
-    score: float
-    # 'utterance' means the match was against an example phrase an author wrote;
-    # 'card' means it was against the description.
-    matched_kind: str
-    matched_text: str
-    mpin_required: bool
-    required_fields: list[str]
-    # The full front matter: fields with their prompts, returns, error messages.
-    # Everything the fill loop needs, without a second call.
-    contract: dict
-
-
-class DomainScore(BaseModel):
-    """How strongly one domain matched, for explaining the narrowing."""
-
-    domain: str
-    score: float
-    hits: int
-
-
-class ActionResolveResponse(BaseModel):
-    """
-    The resolution, with enough of the reasoning to debug a wrong answer.
-
-    `confidence` is the field to branch on:
-      high       — act on candidates[0]
-      ambiguous  — ask the merchant which of the top two they meant
-      low        — nothing matched well enough; treat it as a question
-    """
-
-    query: str
-    knowledge_base: str
-    confidence: str
-    reason: str
-    candidates: list[ActionCandidate]
-
-    domains_ranked: list[DomainScore]
-    domains_kept: list[str]
-    domain_filter_applied: bool
-    # True when narrowing was abandoned and the unfiltered ranking was used
-    fallback_used: bool
-
-    top_score: float | None = None
-    margin: float | None = None
-    embed_ms: float
-    search_ms: float

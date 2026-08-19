@@ -16,7 +16,7 @@ Interactive docs are also served at `/docs` (Swagger) and `/redoc`.
 - [Knowledge bases](#knowledge-bases) — list, add, test, re-check, update, remove
 - [Documents](#documents) — create, list, read, update, delete
 - [Uploading files](#uploading-files) — upload, replace, append
-- [Search](#search) — and [resolving an action](#post-apiv1actionsresolve)
+- [Search](#search)
 - [Browsing and statistics](#browsing-and-statistics) — `/tree`, `/stats`, `/formats`
 - [Settings](#settings) — embedding configuration and the API key
 - [Health](#health)
@@ -696,7 +696,7 @@ Content-Type: application/json
 | Field | Default | Notes |
 |---|---|---|
 | `query` | — | Natural language. Any language — the models are multilingual |
-| `top_k` | `5` | 1–50 |
+| `top_k` | `5` | 1–200. Generous because a caller may be collapsing chunks into one entry per document rather than reading them |
 | `doc_type` | — | Restrict to one kind of document |
 | `folder` | — | Restrict to one folder |
 
@@ -713,118 +713,6 @@ The query is embedded with **this knowledge base's model**. Searching a knowledg
 base built with a different model would project the query into a different space
 and return noise rather than an error, which is why the model is fixed at
 creation.
-
-### `POST /api/v1/actions/resolve`
-
-Given what a merchant said, identify which API in an **API catalogue** knowledge
-base they are asking for — or report that nothing matched well enough.
-
-**Selection only.** This service never calls the API it selects. It returns the
-contract so the caller can.
-
-```http
-POST /api/v1/actions/resolve?kb=api-catalog
-Content-Type: application/json
-
-{ "message": "i want to give my customers 25 percent off", "top_k": 3 }
-```
-
-```json
-{
-  "query": "i want to give my customers 25 percent off",
-  "knowledge_base": "api-catalog",
-  "confidence": "high",
-  "reason": "'offers.create' matched at 0.79, clear of the next by 0.052.",
-  "candidates": [
-    {
-      "api_id": "offers.create",
-      "domain": "offers",
-      "method": "POST",
-      "path": "/v1/merchant/offers",
-      "title": "Create an offer",
-      "document_id": "8f21…",
-      "score": 0.7912,
-      "matched_kind": "utterance",
-      "matched_text": "give 100 rupees off on orders above 500",
-      "mpin_required": false,
-      "required_fields": ["offer_name", "discount_type", "discount_value"],
-      "contract": {
-        "api_id": "offers.create",
-        "fields": [
-          {
-            "name": "offer_name",
-            "type": "string",
-            "required": true,
-            "prompt": "What should this offer be called?"
-          }
-        ],
-        "returns": { "success": ["offer_id", "status"] }
-      }
-    }
-  ],
-  "domains_ranked": [
-    { "domain": "offers", "score": 0.7912, "hits": 5 },
-    { "domain": "catalog", "score": 0.6801, "hits": 4 }
-  ],
-  "domains_kept": ["offers"],
-  "domain_filter_applied": true,
-  "fallback_used": false,
-  "top_score": 0.7912,
-  "margin": 0.052,
-  "embed_ms": 612.4,
-  "search_ms": 41.8
-}
-```
-
-**Branch on `confidence`:**
-
-| Value | What it means | What to do |
-|---|---|---|
-| `high` | One API matched well and clear of the next | Act on `candidates[0]` |
-| `ambiguous` | The top two are too close to separate | Ask which one was meant — name both |
-| `low` | Nothing matched well enough | Treat the message as a question, not an instruction |
-
-| Field | Default | Notes |
-|---|---|---|
-| `message` | — | Verbatim. **Do not summarise it** — the phrasing is the signal |
-| `top_k` | `5` | 1–20 |
-| `min_score` | server default | Below this, no action is confident enough |
-| `decision_margin` | server default | First and second closer than this means ask |
-| `domain_margin` | server default | How close a domain stays in play |
-
-The three thresholds are per-request so they can be swept during evaluation
-without a redeploy. Omit them in production and the server's calibrated values
-apply.
-
-**`contract`** is the card's whole front matter — every field with its `prompt`,
-the return shape, and each error code in plain words. It arrives with the
-selection, so the fill loop needs no second call.
-
-**How it decides**, because a wrong answer is much easier to debug when you know:
-
-1. The message is embedded once.
-2. The **whole** catalogue is searched — cards and example utterances together.
-3. Hits collapse to one candidate per `api_id`, scored by its best chunk.
-4. Domains are ranked by their strongest API; those within `domain_margin` of
-   the best stay in play, the rest drop out.
-5. If narrowing leaves fewer than two candidates, or the survivors are weak, the
-   **unfiltered ranking** is used instead — it was computed in step 2, so the
-   fallback costs nothing. `fallback_used` says whether this happened.
-6. Confidence is decided from the top score and the gap to second place.
-
-Searching first and narrowing second is deliberate. Narrowing first would mean
-that when the domain ranking is wrong, the right API is unreachable — turning a
-ranking error into a confident wrong action.
-
-Everything after step 1 is deterministic. The same message against the same
-catalogue always resolves the same way.
-
-**One thing this endpoint cannot do for you.** It cannot reliably tell *"show me
-my settlements"* from *"explain how settlements work"* — the two are nearly
-identical in embedding space, and the difference is grammatical mood rather than
-meaning. Deciding question-versus-instruction is the orchestrator's intent step,
-and it belongs **before** this call. Treat `confidence` as a safety net for that
-classifier, not a replacement for it.
 
 ---
 
@@ -1073,6 +961,10 @@ to a dead session.
 ## What this API does not do
 
 Worth knowing before you build on it:
+
+- **It never calls anything.** The only outbound requests this service makes are
+  to the embedding provider and to Postgres. Selecting and calling an API from
+  the catalogue is the orchestrator's job, and deliberately not this service's.
 
 - **No re-embed job.** Changing a knowledge base's model means creating a new one
   and re-ingesting.

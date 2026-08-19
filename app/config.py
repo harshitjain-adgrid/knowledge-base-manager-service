@@ -73,18 +73,6 @@ class Settings(BaseSettings):
     # separately (e.g. on Vercel) from the API.
     cors_origins: str = ""
 
-    # ── Action selection ──
-    #
-    # Defaults calibrated against the seed catalogue; see seeds/eval. They are
-    # settings rather than constants because the right values depend on the
-    # catalogue, and a catalogue with 300 APIs will want different ones from a
-    # catalogue with 30.
-    action_pool_size: int = 60          # chunks retrieved before collapsing to APIs
-    action_min_score: float = 0.65      # below this, no action is confident enough
-    action_decision_margin: float = 0.02  # first vs second: closer than this means ask
-    action_domain_margin: float = 0.05  # how close a domain stays in play
-    action_max_domains: int = 3
-
     # ── File Uploads ──
     max_upload_size_mb: int = 20  # Maximum PDF upload size in MB
 

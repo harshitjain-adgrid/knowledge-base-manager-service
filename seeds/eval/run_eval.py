@@ -8,8 +8,13 @@ Two things are measured, and they fail for different reasons, so they are
 reported separately:
 
   product  — does the right document reach the assistant's context?
-  action   — is the right API selected, and is a non-instruction correctly
-             refused rather than acted on?
+  action   — does the catalogue retrieve the right API for a merchant message,
+             and does a non-instruction correctly fail to reach the bar?
+
+Both go through /search. The knowledge base retrieves; the collapsing and
+ranking that turn chunk hits into one API live in selection.py, beside this
+script, because deciding what to do with a retrieval is the orchestrator's job
+and not the service's.
 
 Results are broken down by tier. An overall number hides the only failures that
 matter: a wrong action taken confidently, or a question mistaken for a command.
@@ -26,6 +31,8 @@ import urllib.error
 import urllib.request
 
 import yaml
+
+import selection
 
 HERE = pathlib.Path(__file__).parent
 TIERS = ["easy", "medium", "confusable", "negative"]
@@ -96,36 +103,45 @@ class Tally:
 
 # ── action selection ─────────────────────────────────────────────────────────
 
+def resolve(base, token, kb, message, top_k, overrides=None):
+    """Retrieve from the knowledge base, then decide locally."""
+    result = post(base, token, "/api/v1/search",
+                  {"query": message, "top_k": selection.DEFAULT_POOL_SIZE}, kb)
+    if "__error__" in result:
+        return None, result["__error__"], 0.0
+
+    decision = selection.decide(result["results"], top_k=top_k, **(overrides or {}))
+    return decision, None, result["embed_ms"] + result["search_ms"]
+
+
 def eval_actions(base, token, kb, top_k, overrides=None, quiet=False):
     cases = yaml.safe_load((HERE / "action_queries.yaml").read_text(encoding="utf-8"))["queries"]
     tally = Tally()
     latencies = []
 
     for case in cases:
-        body = {"message": case["q"], "top_k": top_k, **(overrides or {})}
-        result = post(base, token, "/api/v1/actions/resolve", body, kb)
-        if "__error__" in result:
-            tally.add(case["tier"], False, f"{case['q']!r} -> {result['__error__']}")
+        decision, error, elapsed = resolve(base, token, kb, case["q"], top_k, overrides)
+        if error:
+            tally.add(case["tier"], False, f"{case['q']!r} -> {error}")
             continue
 
-        latencies.append(result["embed_ms"] + result["search_ms"])
-        candidates = result["candidates"]
-        top = candidates[0]["api_id"] if candidates else None
-        confidence = result["confidence"]
+        latencies.append(elapsed)
+        top = decision.candidates[0].api_id if decision.candidates else None
+        confidence = decision.confidence
         expected = case.get("expect")
 
         if expected is None:
-            # A question, not an instruction. Passing means NOT acting.
+            # A question, not an instruction. Passing means NOT reaching the bar.
             passed = confidence != "high"
-            detail = (f"{case['q']!r} -> acted on {top} "
-                      f"({result['top_score']:.3f}, {confidence})")
+            detail = (f"{case['q']!r} -> would act on {top} "
+                      f"({decision.top_score:.3f}, {confidence})")
         else:
             passed = top == expected and confidence == "high"
             if top == expected and confidence != "high":
                 detail = (f"{case['q']!r} -> right API ({expected}) but "
-                          f"{confidence}: {result['reason']}")
+                          f"{confidence}: {decision.reason}")
             else:
-                detail = (f"{case['q']!r} -> {top} @{result['top_score']:.3f}, "
+                detail = (f"{case['q']!r} -> {top} @{decision.top_score:.3f}, "
                           f"wanted {expected}")
             if case.get("not_expect") and top == case["not_expect"]:
                 detail += "  [picked the sibling it was warned about]"
@@ -201,23 +217,22 @@ def sweep(base, token, kb, top_k):
     # one, and the retrieval does not change.
     resolved = []
     for case in cases:
-        result = post(base, token, "/api/v1/actions/resolve",
-                      {"message": case["q"], "top_k": top_k,
-                       "min_score": 0.0, "decision_margin": 0.0}, kb)
-        resolved.append((case, result))
+        decision, error, _ = resolve(base, token, kb, case["q"], top_k,
+                                     {"min_score": 0.0, "decision_margin": 0.0})
+        resolved.append((case, decision if not error else None))
 
     best = None
     for min_score in (0.50, 0.55, 0.60, 0.62, 0.65, 0.68, 0.70, 0.75):
         for margin in (0.00, 0.01, 0.02, 0.03, 0.04, 0.06):
             per_tier = {tier: [0, 0] for tier in TIERS}
 
-            for case, result in resolved:
-                if "__error__" in result or not result.get("candidates"):
+            for case, decision in resolved:
+                if decision is None or not decision.candidates:
                     per_tier[case["tier"]][1] += 1
                     continue
-                candidates = result["candidates"]
-                top_score = candidates[0]["score"]
-                gap = (candidates[0]["score"] - candidates[1]["score"]
+                candidates = decision.candidates
+                top_score = candidates[0].score
+                gap = (candidates[0].score - candidates[1].score
                        if len(candidates) > 1 else 1.0)
 
                 if top_score < min_score:
@@ -231,7 +246,7 @@ def sweep(base, token, kb, top_k):
                 if expected is None:
                     ok = confidence != "high"
                 else:
-                    ok = candidates[0]["api_id"] == expected and confidence == "high"
+                    ok = candidates[0].api_id == expected and confidence == "high"
 
                 per_tier[case["tier"]][1] += 1
                 per_tier[case["tier"]][0] += 1 if ok else 0
