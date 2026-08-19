@@ -24,6 +24,19 @@ ACTION SELECTION
 retrieval latency: 2058ms mean, 3898ms worst   (over an SSH tunnel)
 ```
 
+### One change that measured as nothing
+
+After these numbers were taken, the card chunk was given a line naming its
+fields in words — *"Needs: offer name, discount type (percentage or flat),
+discount value."* — so that a chunk read on its own says what the API takes.
+
+The catalogue was re-embedded and the set re-run. **The result was identical:
+50/63, the same failures in the same tiers.** The utterance chunks dominate
+matching, which is by design, so enriching the card text moved nothing.
+
+It was kept anyway, because it makes a chunk legible to a person reading it in
+the simulator — but it is recorded here as no measured improvement, not as one.
+
 ---
 
 ## Reading these numbers

@@ -453,6 +453,36 @@ def validate_tool_card(meta: dict) -> list[str]:
     return problems
 
 
+def _describe_fields(fields, *, required: bool) -> str:
+    """
+    Render a card's fields as a phrase a person would say.
+
+    `discount_type` with values [percentage, flat] becomes "discount type
+    (percentage or flat)". The underscores and the enum values are what make it
+    matchable — a merchant writes "flat 100 off", never "discount_type".
+    """
+    if not isinstance(fields, list):
+        return ""
+
+    parts: list[str] = []
+    for field in fields:
+        if not isinstance(field, dict):
+            continue
+        if bool(field.get("required")) is not required:
+            continue
+        name = str(field.get("name") or "").strip().replace("_", " ")
+        if not name:
+            continue
+        values = field.get("values")
+        if isinstance(values, list) and values:
+            readable = " or ".join(str(v).replace("_", " ") for v in values)
+            parts.append(f"{name} ({readable})")
+        else:
+            parts.append(name)
+
+    return ", ".join(parts)
+
+
 def chunk_tool_card(
     content: str,
     doc_metadata: dict | None = None,
@@ -497,11 +527,23 @@ def chunk_tool_card(
         "path": path,
     }
 
-    # The card itself, prefixed with the call it describes, so the chunk still
-    # identifies its API when read on its own — which is how it reaches the
-    # assistant.
+    # The card itself: prefixed with the call it describes and suffixed with what
+    # it needs, so the chunk identifies both its API and its inputs when read on
+    # its own — which is how it reaches the assistant, and how a person reads it
+    # in the search simulator.
+    #
+    # The needs line is words rather than field names, because it is embedded:
+    # "discount type (percentage or flat)" can match a merchant who says "flat
+    # 100 off", where `discount_type` cannot.
     header = f"{doc_title or api_id} ({method} {path})"
     card = f"{header}\n\n{body}"
+
+    needs = _describe_fields(meta.get("fields"), required=True)
+    optional = _describe_fields(meta.get("fields"), required=False)
+    if needs:
+        card += f"\n\nNeeds: {needs}."
+    if optional:
+        card += f"\nOptionally: {optional}."
 
     if len(card) > max_size:
         raise ValueError(

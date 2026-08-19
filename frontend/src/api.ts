@@ -136,6 +136,46 @@ export interface SearchResponse {
   search_ms: number;
 }
 
+export interface ActionCandidate {
+  api_id: string;
+  domain: string;
+  method: string;
+  path: string;
+  title: string;
+  document_id: string;
+  score: number;
+  /** 'utterance' when an example phrase matched, 'card' when the description did. */
+  matched_kind: string;
+  matched_text: string;
+  mpin_required: boolean;
+  required_fields: string[];
+  /** The card's whole front matter — fields with prompts, returns, error messages. */
+  contract: Record<string, unknown>;
+}
+
+export interface DomainScore {
+  domain: string;
+  score: number;
+  hits: number;
+}
+
+export interface ActionResolution {
+  query: string;
+  knowledge_base: string;
+  /** 'high' act · 'ambiguous' ask which · 'low' treat as a question */
+  confidence: string;
+  reason: string;
+  candidates: ActionCandidate[];
+  domains_ranked: DomainScore[];
+  domains_kept: string[];
+  domain_filter_applied: boolean;
+  fallback_used: boolean;
+  top_score: number | null;
+  margin: number | null;
+  embed_ms: number;
+  search_ms: number;
+}
+
 export interface SupportedFormats {
   extensions: string[];
   tabular_formats: string[];
@@ -376,6 +416,9 @@ export const api = {
     doc_type?: string | null;
     folder?: string | null;
   }) => postJson<SearchResponse>('/search', payload),
+
+  resolveAction: (payload: { message: string; top_k?: number }) =>
+    postJson<ActionResolution>('/actions/resolve', payload),
 
   // ── Knowledge bases ──
 

@@ -12,6 +12,7 @@ import pytest
 
 from app.services.chunking_service import (
     MIN_UTTERANCES,
+    _describe_fields,
     chunk_document,
     chunk_tool_card,
     validate_tool_card,
@@ -265,3 +266,55 @@ def test_every_domain_present_is_ranked():
         hit("c.three", 0.7, domain="orders"),
     ])
     assert {d["domain"] for d in _rank_domains(candidates)} == {"offers", "khata", "orders"}
+
+
+# ── The needs line ───────────────────────────────────────────────────────────
+
+FIELDS = [
+    {"name": "offer_name", "required": True, "prompt": "?"},
+    {"name": "discount_type", "required": True, "prompt": "?",
+     "values": ["percentage", "flat"]},
+    {"name": "valid_until", "required": False},
+    {"name": "min_order_value", "required": False},
+]
+
+
+def test_required_fields_are_described_in_words():
+    # Underscores are what stop a field name matching anything a merchant types.
+    assert _describe_fields(FIELDS, required=True) == (
+        "offer name, discount type (percentage or flat)"
+    )
+
+
+def test_optional_fields_are_described_separately():
+    assert _describe_fields(FIELDS, required=False) == "valid until, min order value"
+
+
+def test_enum_values_are_spelled_out():
+    # "flat 100 off" should be able to match; "discount_type" never could.
+    assert "(percentage or flat)" in _describe_fields(FIELDS, required=True)
+
+
+def test_describing_nothing_gives_an_empty_string():
+    assert _describe_fields(None, required=True) == ""
+    assert _describe_fields([], required=True) == ""
+    assert _describe_fields([{"required": True}], required=True) == ""
+
+
+def test_the_card_chunk_says_what_it_needs():
+    chunks = chunk_tool_card("Creates an offer.", card(fields=FIELDS), "Create an offer", 4000)
+    content = chunks[0].content
+    assert "Needs: offer name, discount type (percentage or flat)." in content
+    assert "Optionally: valid until, min order value." in content
+
+
+def test_a_card_with_no_fields_gets_no_needs_line():
+    chunks = chunk_tool_card("Body.", card(fields=[]), "T", 4000)
+    assert "Needs:" not in chunks[0].content
+
+
+def test_utterance_chunks_are_left_alone():
+    # Only the card chunk describes fields. An utterance is a merchant phrase and
+    # padding it would make it match like a description instead.
+    chunks = chunk_tool_card("Body.", card(fields=FIELDS), "T", 4000)
+    assert all("Needs:" not in c.content for c in chunks[1:])

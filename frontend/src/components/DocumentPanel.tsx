@@ -19,8 +19,9 @@ import {
   monoInputClass,
   Spinner,
 } from './ui';
+import { ApiContract, isApiCard } from './ApiContract';
 
-type Tab = 'content' | 'chunks' | 'metadata';
+type Tab = 'contract' | 'content' | 'chunks' | 'metadata';
 
 export function DocumentPanel({
   documentId,
@@ -56,6 +57,9 @@ export function DocumentPanel({
     try {
       const data = await api.getDocument(documentId);
       setDoc(data);
+      // Open an API card on its contract. Its description is two paragraphs;
+      // the contract is what someone opened it to check.
+      setTab(isApiCard(data.metadata) ? 'contract' : 'content');
       setDraft({
         title: data.title,
         folder_path: data.folder_path,
@@ -228,9 +232,12 @@ export function DocumentPanel({
       {/* Tabs */}
       <div className="px-6 border-b border-gray-100 flex gap-1 shrink-0">
         {([
-          ['content', 'Content'],
+          // An API card leads with its contract. The body is two paragraphs of
+          // description; the contract is the part someone opened this to check.
+          ...(isApiCard(doc.metadata) ? [['contract', 'Contract'] as [Tab, string]] : []),
+          ['content', 'Description'],
           ['chunks', `Chunks (${doc.chunk_count})`],
-          ['metadata', 'Metadata'],
+          ['metadata', 'Raw metadata'],
         ] as [Tab, string][]).map(([key, label]) => (
           <button
             key={key}
@@ -301,6 +308,8 @@ export function DocumentPanel({
               </div>
             )}
           </div>
+        ) : tab === 'contract' ? (
+          <ApiContract metadata={(doc.metadata ?? {}) as never} />
         ) : tab === 'content' ? (
           <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800 leading-relaxed">
             {doc.content}
