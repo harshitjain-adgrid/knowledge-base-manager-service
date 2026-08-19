@@ -106,7 +106,10 @@ queries:
 - { q: "is it better to run a deal or a discount",      expect: null, tier: negative }
 - { q: "what happens if I don't accept an order in time", expect: null, tier: negative }
 - { q: "why is my shop not showing up in search",        expect: null, tier: negative }
-- { q: "what's the weather like today",                  expect: null, tier: negative }
+# Was a negative until the weather domain existed. It is now a legitimate
+# action, and the assistant should act on it — a reminder that the negative
+# tier has to be maintained alongside the catalogue, not written once.
+- { q: "what's the weather like today",                  expect: weather.current, tier: easy }
 - { q: "thanks, that's all for now",                     expect: null, tier: negative }
 - { q: "who is the prime minister of india",             expect: null, tier: negative }
 - { q: "explain how settlements work",                   expect: null, tier: negative }

@@ -1,18 +1,8 @@
 # Baseline results
 
-> **These numbers predate the offers rewrite and the real public-API domains.**
-> They were measured against a 33-card catalogue in which `offers.create` was a
-> single invented endpoint. The catalogue is now 41 cards: `offers.create` has
-> been replaced by `offers.deal.create` and `offers.discount.create` — one
-> merchant word, two payloads behind one MPIN-gated endpoint — and the
-> `weather` and `reference` domains have been added.
->
-> **Re-run `run_eval.py` after reloading the catalogue and replace this file.**
-> The action-selection numbers below are not valid for the current content; the
-> product-knowledge numbers are, since that side did not change.
-
-Measured 19 August 2026 against the seed content, `gemini-embedding-2` at 3072
-dimensions, `min_score=0.65`, `decision_margin=0.02`.
+Measured 19 August 2026 against the 41-card catalogue and 22 product documents.
+`gemini-embedding-2` at 3072 dimensions, `min_score=0.65`,
+`decision_margin=0.02`.
 
 Re-run after any change to the content, the chunking, or the thresholds. A drop
 against these numbers is a regression.
@@ -26,27 +16,49 @@ PRODUCT KNOWLEDGE  (recall@5)
   overall       36/36  100.0%
 
 ACTION SELECTION
-  easy          18/21   85.7%
-  medium        14/16   87.5%
-  confusable    14/16   87.5%
-  negative       4/10   40.0%
-  overall       50/63   79.4%
+  easy          25/27   92.6%
+  medium        18/20   90.0%
+  confusable    22/25   88.0%
+  negative       3/9    33.3%
+  overall       68/81   84.0%
 
-retrieval latency: 2058ms mean, 3898ms worst   (over an SSH tunnel)
+retrieval latency: 2306ms mean, 5024ms worst   (over an SSH tunnel)
 ```
 
-### One change that measured as nothing
+**On real instructions — every tier except `negative` — 65 of 72, 90.3%.**
 
-After these numbers were taken, the card chunk was given a line naming its
-fields in words — *"Needs: offer name, discount type (percentage or flat),
-discount value."* — so that a chunk read on its own says what the API takes.
+---
 
-The catalogue was re-embedded and the set re-run. **The result was identical:
-50/63, the same failures in the same tiers.** The utterance chunks dominate
-matching, which is by design, so enriching the card text moved nothing.
+## What changed since the previous measurement
 
-It was kept anyway, because it makes a chunk legible to a person reading it in
-the simulator — but it is recorded here as no measured improvement, not as one.
+The earlier run scored 46/53 (86.8%) on instructions against a 33-card
+catalogue. Two things moved the number, and only one of them was a code change.
+
+### Modelling offers correctly
+
+`offers.create` was an invented endpoint. In the real contract there is no such
+thing: a merchant says "offer" for two different actions that share one
+MPIN-gated endpoint and differ only by a discriminator.
+
+```
+POST /v1/merchant/{merchantId}/mpin-actions
+  purpose = DEAL_CREATE      -> what the customer receives changes
+  purpose = DISCOUNT_CREATE  -> what the customer pays changes
+```
+
+Six confusable pairs were added for exactly this — *"free dessert with any bill
+over 500"* against *"flat 100 rupees off on orders above 800"*, and four more.
+**All six pass.** Describing a domain the way it actually works, rather than the
+way it was convenient to invent, was worth more than any tuning.
+
+### A negative case that stopped being negative
+
+`"what's the weather like today"` was written as a negative when there was no
+weather domain. Once one existed it became a legitimate action, and the resolver
+was right to act on it. It is now labelled `easy` with `expect: weather.current`.
+
+Worth remembering: **the negative tier has to be maintained alongside the
+catalogue.** A question today is an instruction as soon as an API can answer it.
 
 ---
 
@@ -54,100 +66,105 @@ the simulator — but it is recorded here as no measured improvement, not as one
 
 ### Product knowledge is solved
 
-100% across every tier, including the negatives — questions nothing in the
-knowledge base covers ("how do I file my GST return") all score below the 0.70
-floor, so the assistant will say it does not know rather than answering from the
-nearest unrelated passage.
-
-Heading-aware chunking is doing the work here. Every document is a set of
-self-contained sections, and a question lands on the section that answers it.
-
-### Action selection on real instructions: 46/53 (86.8%)
-
-Counting only the tiers that contain actual instructions — easy, medium and
-confusable — 46 of 53 resolve correctly.
-
-The confusable tier at 87.5% is the number worth noting: those are pairs chosen
-specifically to be hard (create versus update, credit given versus payment
-received, orders versus catalogue). Fourteen of sixteen land on the right side.
+100% across every tier, including negatives — questions nothing in the knowledge
+base covers ("how do I file my GST return") all score below the 0.70 floor, so
+the assistant says it does not know rather than answering from the nearest
+unrelated passage.
 
 ### The negative tier is not a tuning problem
 
-Six of ten questions were treated as instructions:
+Six of nine questions are still treated as instructions:
 
 ```
-'what does khata actually mean'            -> khata.customer.list      @0.763
-'explain how settlements work'             -> payments.settlement.list @0.756
-"what happens if I don't accept an order"  -> orders.status.update     @0.727
-'is it better to give a coupon or a flat discount' -> offers.coupon.create @0.729
+'what does khata actually mean'             -> khata.customer.list      @0.763
+'explain how settlements work'              -> payments.settlement.list @0.756
+"what happens if I don't accept an order"   -> orders.status.update     @0.727
+'is it better to run a deal or a discount'  -> offers.deal.create       @0.737
 ```
 
 **These score in the same range as correct actions.** "Explain how settlements
-work" and "show me my settlements" are nearly identical in embedding space —
-they differ in grammatical mood, not in meaning, and an embedding model captures
-mood weakly.
+work" and "show me my settlements" are nearly identical in embedding space — they
+differ in grammatical mood, not in meaning, and an embedding model captures mood
+weakly.
 
-The threshold sweep confirms there is no setting that fixes this:
+The threshold sweep confirms no setting fixes it. Buying the negative tier costs
+the positive tiers roughly one-for-one; at `min_score=0.75, margin=0.06` the
+negatives reach 80% and the confusable tier collapses to 12%.
 
-| min_score | margin | easy | medium | confusable | negative | overall |
-|---|---|---|---|---|---|---|
-| 0.60 | 0.01 | 90% | 88% | 94% | 10% | 77.8% |
-| **0.65** | **0.02** | **86%** | **88%** | **88%** | **40%** | **79.4%** |
-| 0.70 | 0.02 | 86% | 88% | 81% | 50% | 79.4% |
-| 0.75 | 0.00 | 76% | 75% | 69% | 80% | 74.6% |
-| 0.75 | 0.06 | 57% | 62% | 12% | 80% | 50.8% |
+**Separating a question from an instruction belongs in the orchestrator's intent
+step, before this call is made.** `confidence` is a safety net for that
+classifier, not a replacement. Once intent is decided upstream, the number that
+matters is **65/72**.
 
-Buying the negative tier costs the positive tiers roughly one-for-one. At
-0.75/0.06 the negatives reach 80% and the confusable tier collapses to 12%.
-
-**Conclusion: separating a question from an instruction belongs in the
-orchestrator's intent step, before this call is made.** `confidence` is a safety
-net for that classifier, not a replacement for it. Once intent is decided
-upstream, the number that matters is 46/53 on real instructions.
-
-If you want a second signal, the cheapest one is already available: resolve the
-same message against *both* knowledge bases and compare. A message the product
+If you want a second signal, the cheapest is already available: resolve the same
+message against *both* knowledge bases and compare. A message the product
 knowledge base answers better than the catalogue is a question.
 
 ---
 
 ## The seven positive-tier failures
 
-Two are the right API reported as ambiguous — the pipeline working as designed,
+Three are the right API reported as ambiguous — the pipeline working as designed,
 and the orchestrator would ask rather than guess:
 
 ```
-"let me see everything I'm selling"   catalog.product.list vs offers.list      0.013 apart
-'set up a fresh discount next month'  offers.create vs offers.coupon.create    0.014 apart
+"let me see everything I'm selling"     catalog.product.list vs offers.list             0.013 apart
+'make my existing weekend sale bigger'  offers.update vs offers.discount.create         0.015 apart
+'take 20 percent off everything'        offers.discount.create vs catalog.product.list  0.004 apart
 ```
 
-Five are genuine wrong picks:
+Four are genuine wrong picks:
 
 ```
-'I want to give my customers 25 percent off'  -> offers.coupon.create  (wanted offers.create)
-'show me what customers have ordered'         -> customers.get         (wanted orders.list)
-'save this person so I can give them udhaar'  -> khata.entry.create    (wanted customers.create)
-'ramesh ne 200 de diye aaj'                   -> khata.entry.create    (wanted khata.entry.settle)
+'show me what customers have ordered'         -> customers.get             (wanted orders.list)
+'save this person so I can give them udhaar'  -> khata.entry.create        (wanted customers.create)
+'ramesh ne 200 de diye aaj'                   -> khata.entry.create        (wanted khata.entry.settle)
 'what came in today from customers'           -> payments.transaction.list (wanted orders.list)
 ```
 
-Four of the five involve just two cards — `offers.coupon.create` and
-`khata.entry.create`. Both have utterances broad enough to catch their siblings'
-traffic. `offers.coupon.create` says *"give customers a code for 10% off"*, which
-sits very close to *"give my customers 25 percent off"* while the word doing the
-real work — **code** — carries little weight.
+Three of the four involve one card — `khata.entry.create` — whose utterances are
+broad enough to catch its siblings' traffic. That is a content diagnosis, and
+sharpening those utterances is exactly the guidance in
+[API_CATALOG_GUIDE.md](../../docs/API_CATALOG_GUIDE.md).
 
-**That is a content diagnosis, and it is the right kind of fix.** Sharpening a
-card's utterances so they lean on what makes it distinctive is exactly the
-guidance in [API_CATALOG_GUIDE.md](../../docs/API_CATALOG_GUIDE.md).
-
-### Why those cards have not been fixed here
+### Why that card has not been fixed here
 
 Deliberate. Tuning the seed content against this evaluation set would make the
 numbers go up and the measurement meaningless — the instrument would have been
 calibrated against itself.
 
 Fix cards using **real merchant messages** as you collect them, and keep this set
-as the independent check. When you replace these queries with real ones, the same
-discipline applies: never add an utterance copied from a query you are scoring
+as the independent check. The same discipline applies when you replace these
+queries with real ones: never add an utterance copied from a query you score
 against.
+
+---
+
+## One change that measured as nothing
+
+The card chunk was given a line naming its fields in words — *"Needs: offer name,
+discount type (percentage or flat), discount value."* — so a chunk read on its
+own says what the API takes. The catalogue was re-embedded and the set re-run:
+**identical results, same failures in the same tiers.** The utterance chunks
+dominate matching, which is by design.
+
+Kept for legibility. Recorded as no measured improvement, not as one.
+
+---
+
+## Cost of a run
+
+The Gemini free tier allows **1,000 embed requests per day**, and each text
+counts as one.
+
+| | requests |
+|---|---|
+| Full catalogue reload (41 cards) | 293 |
+| Full product reload (19 documents) | ~115 |
+| One action evaluation | 81 |
+| One product evaluation | 36 |
+| Threshold sweep | 81 |
+
+Reading is cheap — one request per query. **Ingestion is what exhausts the
+quota**, and a day of iterating on content will hit the ceiling. Rotate the key
+in Settings, or move off the free tier before doing bulk reloads.
