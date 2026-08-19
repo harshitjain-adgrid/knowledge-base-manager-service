@@ -15,7 +15,6 @@ Two things follow from that rule:
   the reader always knows what it is looking at.
 """
 
-import json
 import logging
 import re
 from dataclasses import dataclass
@@ -352,73 +351,6 @@ def chunk_text_document(
     return chunks
 
 
-def chunk_api_definition(
-    content: str,
-    doc_metadata: dict | None = None,
-    doc_title: str | None = None,
-    max_size: int | None = None,
-    overlap: int | None = None,
-) -> list[Chunk]:
-    """
-    One chunk per endpoint, so a query can match a single tool rather than a
-    page of them.
-
-    Expects {"apis": [{method, path, summary, description, parameters,
-    request_body, response}, ...]}. Anything else falls back to prose chunking.
-    """
-    try:
-        data = json.loads(content)
-    except json.JSONDecodeError:
-        logger.warning("API definition is not valid JSON. Falling back to text chunking.")
-        return chunk_text_document(content, doc_metadata, doc_title, max_size, overlap)
-
-    apis = data.get("apis") if isinstance(data, dict) else None
-    if not apis or not isinstance(apis, list):
-        logger.warning("No 'apis' array found. Falling back to text chunking.")
-        return chunk_text_document(content, doc_metadata, doc_title, max_size, overlap)
-
-    chunks = []
-    for i, api in enumerate(apis):
-        if not isinstance(api, dict):
-            continue
-        method = str(api.get("method", "UNKNOWN")).upper()
-        path = api.get("path", "")
-        summary = api.get("summary", "")
-        description = api.get("description", "")
-
-        parts = [
-            f"{doc_title} > {method} {path}" if doc_title else f"API Endpoint: {method} {path}",
-            f"API Endpoint: {method} {path}" if doc_title else None,
-            f"Summary: {summary}" if summary else None,
-            f"Description: {description}" if description else None,
-        ]
-        for label, key in (("Parameters", "parameters"),
-                           ("Request Body", "request_body"),
-                           ("Response", "response")):
-            value = api.get(key)
-            if value:
-                parts.append(f"{label}: {json.dumps(value, indent=2)}")
-
-        chunks.append(
-            Chunk(
-                content="\n".join(p for p in parts if p),
-                chunk_index=len(chunks),
-                metadata={
-                    **(doc_metadata or {}),
-                    "chunk_type": "api_endpoint",
-                    "api_method": method,
-                    "api_path": path,
-                },
-            )
-        )
-
-    if not chunks:
-        return chunk_text_document(content, doc_metadata, doc_title, max_size, overlap)
-
-    logger.info(f"API definition split into {len(chunks)} endpoint chunks.")
-    return chunks
-
-
 def chunk_document(
     content: str,
     doc_type: str,
@@ -428,6 +360,188 @@ def chunk_document(
     overlap: int | None = None,
 ) -> list[Chunk]:
     """Route to the chunking strategy for this document type."""
-    if doc_type == "api_definition":
-        return chunk_api_definition(content, doc_metadata, doc_title, max_size, overlap)
+    # 'api' is what authors write in front matter; 'tool_card' names the same
+    # strategy from the retrieval side. Both accepted, so neither reading is wrong.
+    if doc_type in ("api", "tool_card"):
+        return chunk_tool_card(content, doc_metadata, doc_title, max_size)
     return chunk_text_document(content, doc_metadata, doc_title, max_size, overlap)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Tool cards — one API per document
+# ────────────────────────────────────────────────────────────────────────────
+#
+# A tool card is retrieved to answer one question: "is this the API the
+# merchant just asked for?" That makes it a classification target rather than a
+# passage of prose, and it needs two things ordinary chunking cannot give.
+#
+# It must never be split. Half a card is worse than no card — retrieval returns
+# a description with no api_id, or an api_id with no description, and either
+# way a candidate slot is spent on something unusable.
+#
+# And its example utterances are indexed one per chunk. A merchant types
+# "start a 20% off sale"; matching that against another short phrase a person
+# wrote is a far stronger signal than matching it against a paragraph of
+# description. This is the largest single lever on selection accuracy, and it
+# costs one row per utterance.
+
+TOOL_CARD_REQUIRED = ("api_id", "domain", "method", "path")
+HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
+API_ID_RE = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)+$")
+MIN_UTTERANCES = 3
+
+
+def validate_tool_card(meta: dict) -> list[str]:
+    """
+    Everything wrong with a tool card's front matter, in one pass.
+
+    Returns a list of problems rather than raising on the first, because an
+    author fixing a card wants to see all of them at once instead of
+    resubmitting five times. An empty list means the card is usable.
+    """
+    problems: list[str] = []
+    meta = meta or {}
+
+    for key in TOOL_CARD_REQUIRED:
+        if not str(meta.get(key) or "").strip():
+            problems.append(f"'{key}' is missing from the front matter.")
+
+    api_id = str(meta.get("api_id") or "").strip()
+    if api_id and not API_ID_RE.match(api_id):
+        problems.append(
+            f"api_id '{api_id}' should be lowercase and name both the area and "
+            f"the action, separated by a dot — for example 'offers.create'."
+        )
+
+    method = str(meta.get("method") or "").strip().upper()
+    if method and method not in HTTP_METHODS:
+        problems.append(
+            f"method '{method}' is not one of {', '.join(sorted(HTTP_METHODS))}."
+        )
+
+    path = str(meta.get("path") or "").strip()
+    if path and not path.startswith("/"):
+        problems.append(f"path '{path}' should start with '/'.")
+
+    utterances = meta.get("utterances")
+    if not isinstance(utterances, list) or len(utterances) < MIN_UTTERANCES:
+        problems.append(
+            f"'utterances' needs at least {MIN_UTTERANCES} example phrases in the "
+            f"merchant's own words. They are what retrieval actually matches on."
+        )
+    elif any(not str(u).strip() for u in utterances):
+        problems.append("One of the entries under 'utterances' is empty.")
+
+    fields = meta.get("fields")
+    if fields is not None and not isinstance(fields, list):
+        problems.append("'fields' should be a list, one entry per request field.")
+    elif isinstance(fields, list):
+        for index, field in enumerate(fields):
+            if not isinstance(field, dict):
+                problems.append(
+                    f"fields[{index}] should be a mapping, not a bare value."
+                )
+                continue
+            if not str(field.get("name") or "").strip():
+                problems.append(f"fields[{index}] has no 'name'.")
+            if field.get("required") and not str(field.get("prompt") or "").strip():
+                problems.append(
+                    f"fields[{index}] ('{field.get('name')}') is required but has "
+                    f"no 'prompt'. Without one there is nothing to ask the merchant."
+                )
+
+    return problems
+
+
+def chunk_tool_card(
+    content: str,
+    doc_metadata: dict | None = None,
+    doc_title: str | None = None,
+    max_size: int | None = None,
+) -> list[Chunk]:
+    """
+    Turn one API's card into a card chunk plus one chunk per example utterance.
+
+    Raises ValueError when the front matter is unusable or the description is
+    too long to keep whole. Both are author mistakes, and both must surface at
+    upload — while someone is looking at the file — rather than as a wrong API
+    call weeks later.
+    """
+    meta = dict(doc_metadata or {})
+    max_size = max_size if max_size is not None else settings.chunk_size
+
+    problems = validate_tool_card(meta)
+    if problems:
+        raise ValueError(
+            "This API card cannot be stored:\n  - " + "\n  - ".join(problems)
+        )
+
+    api_id = str(meta["api_id"]).strip()
+    domain = str(meta["domain"]).strip()
+    method = str(meta["method"]).strip().upper()
+    path = str(meta["path"]).strip()
+
+    body = content.strip()
+    if not body:
+        raise ValueError(
+            f"'{api_id}' has no description. The body is what a merchant's "
+            f"question is matched against when their phrasing is not already in "
+            f"the utterance list."
+        )
+
+    shared = {
+        **meta,
+        "api_id": api_id,
+        "domain": domain,
+        "method": method,
+        "path": path,
+    }
+
+    # The card itself, prefixed with the call it describes, so the chunk still
+    # identifies its API when read on its own — which is how it reaches the
+    # assistant.
+    header = f"{doc_title or api_id} ({method} {path})"
+    card = f"{header}\n\n{body}"
+
+    if len(card) > max_size:
+        raise ValueError(
+            f"'{api_id}' is {len(card)} characters, over this knowledge base's "
+            f"limit of {max_size}. An API card has to fit in a single chunk — "
+            f"shorten the description, or raise the knowledge base's chunk size. "
+            f"Splitting it would return half a tool."
+        )
+
+    chunks = [
+        Chunk(
+            content=card,
+            chunk_index=0,
+            metadata={**shared, "chunk_kind": "card"},
+        )
+    ]
+
+    # One chunk per utterance, stored the way a merchant would say it.
+    # Deduplicated case-insensitively: a repeated phrase would occupy two
+    # candidate slots while carrying the same evidence.
+    seen: set[str] = set()
+    for utterance in meta.get("utterances", []):
+        text = str(utterance).strip()
+        key = text.lower()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        chunks.append(
+            Chunk(
+                content=text,
+                chunk_index=len(chunks),
+                metadata={
+                    **shared,
+                    "chunk_kind": "utterance",
+                    "utterance_index": len(chunks) - 1,
+                },
+            )
+        )
+
+    logger.info(
+        f"Tool card '{api_id}' indexed as 1 card + {len(chunks) - 1} utterances."
+    )
+    return chunks

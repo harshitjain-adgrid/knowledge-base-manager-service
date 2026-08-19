@@ -1,0 +1,88 @@
+# Action selection evaluation set.
+#
+# Every query here is a PARAPHRASE. None of them is copied from a card's
+# `utterances` list, because a test that feeds a string back to the index that
+# contains it measures nothing except that cosine similarity works.
+#
+# tiers:
+#   easy      — plainly worded, one obvious API
+#   medium    — real phrasing, indirect, or in Hindi/Hinglish
+#   confusable— deliberately close to a sibling API; the pair is named
+#   negative  — not an action at all. The right answer is low confidence,
+#               not a wrong API. These are the ones that matter most: a
+#               confident wrong action is far worse than an admitted miss.
+
+queries:
+
+# ── easy ────────────────────────────────────────────────────────────────
+- { q: "put a new item on my shop page",                 expect: catalog.product.create, tier: easy }
+- { q: "I need to change how much the rice costs",       expect: catalog.product.update, tier: easy }
+- { q: "let me see everything I'm selling",              expect: catalog.product.list,   tier: easy }
+- { q: "take this item off the shop for good",           expect: catalog.product.delete, tier: easy }
+- { q: "only 3 packets remain",                          expect: catalog.stock.update,   tier: easy }
+- { q: "I want to give my customers 25 percent off",     expect: offers.create,          tier: easy }
+- { q: "which discounts are live at the moment",         expect: offers.list,            tier: easy }
+- { q: "kill the sale, it's costing me too much",        expect: offers.deactivate,      tier: easy }
+- { q: "I want a code people type in for a discount",    expect: offers.coupon.create,   tier: easy }
+- { q: "suresh has taken goods worth 800 without paying", expect: khata.entry.create,    tier: easy }
+- { q: "how much is still pending from mohan",           expect: khata.balance.get,      tier: easy }
+- { q: "nudge him about the money he owes",              expect: khata.reminder.send,    tier: easy }
+- { q: "what came in today from customers",              expect: orders.list,            tier: easy }
+- { q: "this one is packed, move it forward",            expect: orders.status.update,   tier: easy }
+- { q: "I need a link to take 750 from someone",         expect: payments.link.create,   tier: easy }
+- { q: "send the money back to that buyer",              expect: payments.refund.create, tier: easy }
+- { q: "who are the people buying from me",              expect: customers.list,         tier: easy }
+- { q: "I want to change what time I shut",              expect: store.timings.update,   tier: easy }
+- { q: "I'll be shut on the 21st",                       expect: store.holiday.set,      tier: easy }
+- { q: "how much business did I do today",               expect: reports.sales.summary,  tier: easy }
+- { q: "which of my items move fastest",                 expect: reports.top-products,   tier: easy }
+
+# ── medium: indirect phrasing, Hindi and Hinglish ───────────────────────
+- { q: "ek naya saman list karna hai dukaan mein",       expect: catalog.product.create, tier: medium }
+- { q: "chawal ka daam badhana hai",                     expect: catalog.product.update, tier: medium }
+- { q: "mera stock khatam ho gaya is item ka",           expect: catalog.stock.update,   tier: medium }
+- { q: "त्योहार पर छूट देनी है",                            expect: offers.create,          tier: medium }
+- { q: "sale ko aur ek hafte chalao",                    expect: offers.update,          tier: medium }
+- { q: "ramesh ne 200 de diye aaj",                      expect: khata.entry.settle,     tier: medium }
+- { q: "sabka milakar kitna udhaar bacha hai",           expect: khata.customer.list,    tier: medium }
+- { q: "is order ko rok do, saman nahi hai",             expect: orders.cancel,          tier: medium }
+- { q: "bank mein paisa kab tak aayega",                 expect: payments.settlement.list, tier: medium }
+- { q: "dukaan ka number update karna hai",              expect: store.profile.update,   tier: medium }
+- { q: "kitne door tak delivery karta hoon wo badlo",    expect: store.delivery.update,  tier: medium }
+- { q: "is mahine kitne naye log aaye",                  expect: reports.customer-insights, tier: medium }
+- { q: "save this person so I can give them udhaar later", expect: customers.create,     tier: medium }
+- { q: "open up order number 8823 for me",               expect: orders.get,             tier: medium }
+- { q: "tell me about the guy who ordered yesterday",    expect: customers.get,          tier: medium }
+- { q: "did any payment fail this week",                 expect: payments.transaction.list, tier: medium }
+
+# ── confusable: the sibling it must not pick ────────────────────────────
+- { q: "make my existing weekend sale bigger",     expect: offers.update,          not_expect: offers.create,          tier: confusable }
+- { q: "set up a fresh discount for next month",   expect: offers.create,          not_expect: offers.update,          tier: confusable }
+- { q: "write down that he took 300 on credit",    expect: khata.entry.create,     not_expect: khata.entry.settle,     tier: confusable }
+- { q: "mark that he cleared 300 of his balance",  expect: khata.entry.settle,     not_expect: khata.entry.create,     tier: confusable }
+- { q: "show me what customers have ordered",      expect: orders.list,            not_expect: catalog.product.list,   tier: confusable }
+- { q: "show me what I have for sale",             expect: catalog.product.list,   not_expect: orders.list,            tier: confusable }
+- { q: "stop this order and return their money",   expect: orders.cancel,          not_expect: payments.refund.create, tier: confusable }
+- { q: "they got the goods but want money back",   expect: payments.refund.create, not_expect: orders.cancel,          tier: confusable }
+- { q: "how much do people owe me altogether",     expect: khata.customer.list,    not_expect: customers.list,         tier: confusable }
+- { q: "give me the list of people who shop here", expect: customers.list,         not_expect: khata.customer.list,    tier: confusable }
+- { q: "money that reached my bank account",       expect: payments.settlement.list, not_expect: payments.transaction.list, tier: confusable }
+- { q: "money customers paid me on the app",       expect: payments.transaction.list, not_expect: payments.settlement.list, tier: confusable }
+- { q: "I'm closed this coming Friday only",       expect: store.holiday.set,      not_expect: store.timings.update,   tier: confusable }
+- { q: "I never open on Mondays, set that",        expect: store.timings.update,   not_expect: store.holiday.set,      tier: confusable }
+- { q: "I have 40 more units after a delivery",    expect: catalog.stock.update,   not_expect: catalog.product.update, tier: confusable }
+- { q: "this product should be called something else", expect: catalog.product.update, not_expect: catalog.stock.update, tier: confusable }
+
+# ── negative: questions, not instructions ───────────────────────────────
+# The correct outcome is confidence 'low'. Any of these resolving as 'high'
+# means the assistant would take an action nobody asked for.
+- { q: "what does khata actually mean",                  expect: null, tier: negative }
+- { q: "why hasn't my discount been applied to orders",  expect: null, tier: negative }
+- { q: "how long do refunds normally take to arrive",    expect: null, tier: negative }
+- { q: "is it better to give a coupon or a flat discount", expect: null, tier: negative }
+- { q: "what happens if I don't accept an order in time", expect: null, tier: negative }
+- { q: "why is my shop not showing up in search",        expect: null, tier: negative }
+- { q: "what's the weather like today",                  expect: null, tier: negative }
+- { q: "thanks, that's all for now",                     expect: null, tier: negative }
+- { q: "who is the prime minister of india",             expect: null, tier: negative }
+- { q: "explain how settlements work",                   expect: null, tier: negative }

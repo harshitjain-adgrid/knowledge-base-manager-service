@@ -180,7 +180,7 @@ export function AddTextModal({
           <Field label="Title">
             <input name="title" required className={inputClass} placeholder="Document title" />
           </Field>
-          <Field label="Type" hint="api_definition chunks per endpoint; anything else as prose.">
+          <Field label="Type" hint="api keeps one API card whole; anything else is chunked as prose.">
             <select name="doc_type" className={`${inputClass} bg-white`} defaultValue={docTypes[0]}>
               {docTypes.map((t) => (
                 <option key={t} value={t}>{t}</option>

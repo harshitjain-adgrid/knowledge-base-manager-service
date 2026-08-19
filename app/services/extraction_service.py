@@ -333,7 +333,7 @@ def _extract_json(data: bytes, file_name: str) -> ExtractedDocument:
 
     return ExtractedDocument(
         # Re-serialise so the stored content is consistently formatted, and so
-        # the api_definition chunker gets valid JSON regardless of input styling
+        # downstream consumers get valid JSON regardless of input styling
         text=json.dumps(parsed, indent=2, ensure_ascii=False),
         file_name=file_name,
         file_size=len(data),
@@ -482,4 +482,7 @@ def suggested_doc_type(source_format: str) -> str:
 
     JSON is assumed to be an API definition; everything else is prose.
     """
-    return "api_definition" if source_format == "json" else "text"
+    # Everything is prose unless a document declares otherwise in its front
+    # matter. Guessing "this JSON is an API catalogue" from the file extension
+    # was wrong more often than right — JSON is also exports, configs and logs.
+    return "text"

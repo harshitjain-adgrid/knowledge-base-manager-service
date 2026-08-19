@@ -1,0 +1,61 @@
+# Product-knowledge retrieval evaluation set.
+#
+# Each query names the document that should answer it. Retrieval returns chunks,
+# so a query passes when a chunk from the expected document appears in the top k
+# — the assistant only needs the right passage in context, not the whole file.
+#
+# As with the action set, these are paraphrases. None repeats a heading from the
+# document it targets.
+#
+# tiers:
+#   easy      — the document's own subject, plainly asked
+#   medium    — asked sideways, or in Hindi/Hinglish
+#   confusable— close to a neighbouring document; the neighbour is named
+#   negative  — nothing in the knowledge base covers it. The right outcome is a
+#               low top score, so the assistant says it does not know.
+
+queries:
+
+# ── easy ────────────────────────────────────────────────────────────────
+- { q: "what can the assistant do for me",                expect: "What Chotu Can Do",              tier: easy }
+- { q: "what do I need before customers can order",       expect: "Setting Up Your Store",          tier: easy }
+- { q: "how do I put something new in my catalogue",      expect: "Adding Products",                tier: easy }
+- { q: "what happens when something runs out",            expect: "Managing Stock",                 tier: easy }
+- { q: "can I change a price while a sale is running",    expect: "Pricing and Units",              tier: easy }
+- { q: "difference between a coupon and a normal discount", expect: "Types of Offer",               tier: easy }
+- { q: "can I set up a sale now that starts later",       expect: "Scheduling and Ending Offers",   tier: easy }
+- { q: "my discount didn't come off the customer's bill", expect: "Why an Offer Is Not Applying",   tier: easy }
+- { q: "how do I note down that someone took goods on credit", expect: "Recording Udhaar",          tier: easy }
+- { q: "can I chase customers for money they owe",        expect: "Sending Payment Reminders",      tier: easy }
+- { q: "is there a cap on how much credit I can give",    expect: "Khata Limits and Rules",         tier: easy }
+- { q: "what are the stages an order goes through",       expect: "How an Order Moves",             tier: easy }
+- { q: "how do I stop an order I can't fulfil",           expect: "Cancelling an Order",            tier: easy }
+- { q: "when does the money reach my bank",               expect: "When Your Money Arrives",        tier: easy }
+- { q: "how many days do I have to refund someone",       expect: "Refund Rules",                   tier: easy }
+- { q: "can I collect money without an order",            expect: "Payment Links",                  tier: easy }
+- { q: "how do I mark my shop closed for a festival",     expect: "Shop Timings and Holidays",      tier: easy }
+- { q: "how far should I set my delivery area",           expect: "Delivery Settings",              tier: easy }
+- { q: "what does average order value tell me",           expect: "Reading Your Sales Report",      tier: easy }
+
+# ── medium ──────────────────────────────────────────────────────────────
+- { q: "udhaar ka record kaise rakhun",                   expect: "Recording Udhaar",               tier: medium }
+- { q: "paise bank mein kitne din mein aate hain",        expect: "When Your Money Arrives",        tier: medium }
+- { q: "why did two discounts not both apply",            expect: "Types of Offer",                 tier: medium }
+- { q: "an order vanished without me touching it",        expect: "How an Order Moves",             tier: medium }
+- { q: "is it better to offer free delivery or money off", expect: "Delivery Settings",             tier: medium }
+- { q: "I made a mistake in my ledger, can I edit it",    expect: "Recording Udhaar",               tier: medium }
+- { q: "why is my payout smaller than my sales figure",   expect: "Reading Your Sales Report",      tier: medium }
+- { q: "does cancelling hurt my shop",                    expect: "Cancelling an Order",            tier: medium }
+
+# ── confusable ──────────────────────────────────────────────────────────
+- { q: "how do I mark something as sold out",         expect: "Managing Stock",              not_expect: "Adding Products",           tier: confusable }
+- { q: "what should I fill in when listing an item",  expect: "Adding Products",             not_expect: "Managing Stock",            tier: confusable }
+- { q: "a refund on an order I already cancelled",    expect: "Refund Rules",                not_expect: "Cancelling an Order",       tier: confusable }
+- { q: "my sale is live but nobody is getting it",    expect: "Why an Offer Is Not Applying", not_expect: "Types of Offer",           tier: confusable }
+- { q: "how much can one customer owe me",            expect: "Khata Limits and Rules",      not_expect: "Recording Udhaar",          tier: confusable }
+
+# ── negative ────────────────────────────────────────────────────────────
+- { q: "how do I file my GST return",                     expect: null, tier: negative }
+- { q: "can I hire staff through this app",               expect: null, tier: negative }
+- { q: "what is the interest rate on a business loan",    expect: null, tier: negative }
+- { q: "how do I get a food licence",                     expect: null, tier: negative }

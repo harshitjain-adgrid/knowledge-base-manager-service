@@ -16,7 +16,6 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from app.config import get_settings
 from app.services.chunking_service import (
-    chunk_api_definition,
     chunk_document,
     chunk_text_document,
     parse_blocks,
@@ -281,31 +280,6 @@ def test_no_chunk_starts_mid_sentence():
 
 
 # ── api definitions ──
-
-def test_api_definition_one_chunk_per_endpoint():
-    spec = (
-        '{"apis":[{"method":"post","path":"/a","summary":"A"},'
-        '{"method":"GET","path":"/b","summary":"B"}]}'
-    )
-    chunks = chunk_api_definition(spec, doc_title="Offers API")
-    assert len(chunks) == 2
-    assert chunks[0].metadata["api_method"] == "POST"  # normalised
-    assert chunks[1].metadata["api_path"] == "/b"
-    assert all(c.content.startswith("Offers API > ") for c in chunks)
-
-
-@pytest.mark.parametrize("bad", ["not json", '{"nope": 1}', '{"apis": []}', "[]"])
-def test_malformed_api_definition_falls_back_to_text(bad):
-    chunks = chunk_document(bad, "api_definition", doc_title="T")
-    assert all(c.metadata["chunk_type"] == "text" for c in chunks)
-
-
-def test_api_definition_skips_non_dict_entries():
-    chunks = chunk_api_definition('{"apis":["oops",{"method":"GET","path":"/ok"}]}', doc_title="T")
-    assert len(chunks) == 1
-
-
-# ── block parser ──
 
 def test_parse_blocks_classifies_correctly():
     kinds = [b.kind for b in parse_blocks(SAMPLE)]

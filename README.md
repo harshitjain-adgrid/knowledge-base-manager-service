@@ -279,7 +279,9 @@ YAML as a `date` object that JSONB cannot store.
 `doc_type` selects the **chunking strategy** and is an open vocabulary:
 
 - **`text`** — prose (FAQs, policies, guides). Recursive character splitting.
-- **`api_definition`** — endpoint definitions in JSON. One chunk per endpoint.
+- **`api`** — one API in an API catalogue knowledge base. Kept whole,
+  never split, with each example utterance indexed separately so a merchant's
+  phrasing matches directly. See [docs/API_CATALOG_GUIDE.md](docs/API_CATALOG_GUIDE.md).
 
 `source_format` records **where the content came from** (`pdf`, `docx`, `html`,
 `md`, `manual`, …). The two are deliberately separate: a `.docx` and a `.pdf`
@@ -294,24 +296,6 @@ Product knowledge only — what features do, how they work, policies, guides.
 exports and the like belong in the application database, reached by a tool at
 query time. Embedded data goes stale immediately, cannot be redacted from a
 vector, and there is no per-merchant isolation in `knowledge_chunks`.
-
-### API Definition Format
-
-```json
-{
-  "apis": [
-    {
-      "method": "POST",
-      "path": "/api/v1/orders",
-      "summary": "Create a new order",
-      "description": "Creates a new order for the merchant...",
-      "parameters": [],
-      "request_body": { "order_id": "string" },
-      "response": { "status": "created" }
-    }
-  ]
-}
-```
 
 ## Multiple knowledge bases
 
@@ -348,6 +332,73 @@ The host has to be reachable **from the server**, not from your laptop. For a
 database behind SSH, run the tunnel on the server and point the connection string
 at the local end of it; this service does not manage tunnels, because a tunnel it
 opened would die with the process and its key would have to be stored somewhere.
+
+## Two knowledge bases, two jobs
+
+The assistant this service feeds has two modes, and they want different
+retrieval:
+
+| | Product knowledge | API catalogue |
+|---|---|---|
+| Answers | "How do I create an offer?" | "Start a 20% off sale" |
+| Retrieval finds | Passages that help answer | One action, or nothing |
+| Optimises for | Recall | Precision |
+| Being approximately right | Fine — the answer still reads well | **A failure** — the wrong thing gets done |
+| Chunking | Split on headings, ~1200 chars | One API per chunk, never split |
+
+They are separate knowledge bases because almost every setting wants a
+different value — chunk size above all, since a tool card that splits returns
+half a tool. Separation also means the catalogue can be rebuilt when the backend
+ships without touching product knowledge.
+
+### Selecting an action
+
+`POST /api/v1/actions/resolve` turns a merchant message into the API it asked
+for. **Selection only** — this service never calls what it selects.
+
+1. Embed the message once.
+2. Search the **whole** catalogue — cards and example utterances together.
+3. Collapse hits to one candidate per API, scored by its best chunk.
+4. Rank domains by their strongest API; those close to the best stay in play.
+5. If narrowing leaves too little, use the unfiltered ranking — already computed,
+   so the fallback is free.
+6. Return a confidence: `high` act, `ambiguous` ask, `low` treat as a question.
+
+Searching first and narrowing second is deliberate. Narrowing first means that
+when the domain ranking is wrong the right API is unreachable, turning a ranking
+error into a confident wrong action. There are no keyword lists anywhere in this
+path — domains are inferred from where the evidence lands.
+
+Everything after step 1 is deterministic, so the same message always resolves
+the same way and a regression is visible.
+
+**One thing it cannot do.** It cannot reliably separate *"show me my
+settlements"* from *"explain how settlements work"* — measured, not assumed; see
+below. The two are nearly identical in embedding space. Question-versus-instruction
+is the orchestrator's intent step and belongs **before** this call; `confidence`
+is a safety net for that classifier, not a replacement.
+
+The format the backend team fills in:
+**[docs/API_CATALOG_GUIDE.md](docs/API_CATALOG_GUIDE.md)**.
+
+## Seed content and measuring retrieval
+
+`seeds/` holds synthetic content for both knowledge bases — 19 product documents
+and 33 API cards across 8 domains — plus labelled evaluation sets.
+
+```bash
+python seeds/load_seeds.py --base http://127.0.0.1:8000   --dsn 'postgresql://user:pass@host:5432/db?schema=api_catalog'
+
+python seeds/eval/run_eval.py --base http://127.0.0.1:8000
+python seeds/eval/run_eval.py --base http://127.0.0.1:8000 --sweep
+```
+
+Everything in `seeds/` is marked `status: example`. **The API paths and fields
+are invented** — they exist to measure retrieval before the real catalogue
+arrives, not to be called.
+
+Results break down by tier, because one overall number hides the failures that
+matter. See [seeds/README.md](seeds/README.md).
 
 ## Architecture
 
