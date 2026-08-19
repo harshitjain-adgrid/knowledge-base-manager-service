@@ -3,15 +3,25 @@
 Two knowledge bases' worth of content, plus the evaluation sets that measure how
 well retrieval works against them.
 
-> **All of this is synthetic.** Every document carries `status: example` in its
-> front matter, and every API card additionally says
-> `status: example  # synthetic seed data — replace with the real contract`.
+> **Most of this is synthetic — check `status` before calling anything.**
 >
-> The API paths, request fields and error codes are **invented**. They are
-> plausible, not real. Nothing here should reach a merchant, and no orchestrator
-> should call the paths in these cards. They exist so that retrieval and action
-> selection can be measured before the real content arrives, and so the format
-> the backend team fills in is unambiguous.
+> `status: example` — the product documents and the eight merchant domains
+> (catalog, offers, khata, orders, payments, customers, store, reports). The
+> paths, fields and error codes are **invented**: plausible, not real. Nothing
+> here should reach a merchant, and nothing should call these paths. They exist
+> so retrieval can be measured before the real content arrives, and so the
+> format the backend team fills in is unambiguous.
+>
+> `status: live` — the `weather` and `reference` domains. These are real,
+> key-free public APIs (Open-Meteo, sunrise-sunset.org, Frankfurter, CoinGecko,
+> dictionaryapi.dev, Nager.Date), verified responding on 19 August 2026. They
+> are here so an orchestrator can be tested end to end against something that
+> actually answers. They need a `User-Agent` header — several return 403
+> without one.
+>
+> The offers domain is modelled on the **real** AdGrid contract even though it
+> is marked `example`: two actions, `DEAL_CREATE` and `DISCOUNT_CREATE`, behind
+> one MPIN-gated endpoint. The shape is right; the surrounding cards are not.
 
 ---
 

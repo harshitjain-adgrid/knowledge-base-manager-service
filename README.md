@@ -369,7 +369,7 @@ The format the backend team fills in:
 ## Seed content and measuring retrieval
 
 `seeds/` holds synthetic content for both knowledge bases — 19 product documents
-and 33 API cards across 8 domains — plus labelled evaluation sets.
+and 41 API cards across 10 domains — plus labelled evaluation sets.
 
 ```bash
 python seeds/load_seeds.py --base http://127.0.0.1:8000   --dsn 'postgresql://user:pass@host:5432/db?schema=api_catalog'
