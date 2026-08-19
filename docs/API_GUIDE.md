@@ -184,10 +184,10 @@ vectors written by one model are meaningless to another.
   "knowledge_bases": [
     {
       "id": "f66e2232-5344-47a5-aafb-9fb45771e978",
-      "slug": "default",
-      "name": "Primary knowledge base",
+      "slug": "product-knowledge",
+      "name": "Product knowledge",
       "description": "The knowledge base configured in the server's environment.",
-      "table_prefix": "kb_default",
+      "table_prefix": "kb_product_knowledge",
       "dsn_preview": "qa@localhost:5434/vector_qa",
       "embedding_provider": "gemini",
       "embedding_model": "gemini-embedding-2",
@@ -204,7 +204,7 @@ vectors written by one model are meaningless to another.
     }
   ],
   "total": 1,
-  "default_slug": "default"
+  "default_slug": "product-knowledge"
 }
 ```
 
@@ -212,8 +212,8 @@ vectors written by one model are meaningless to another.
 response.** `from_environment: true` marks the knowledge base whose connection
 string comes from `DATABASE_URL` rather than from a stored row.
 
-`table_prefix` names this knowledge base's tables — `kb_default_documents` and
-`kb_default_chunks`. Every knowledge base has its own pair in one schema, so a
+`table_prefix` names this knowledge base's tables — `kb_product_knowledge_documents`
+and `kb_product_knowledge_chunks`. Every knowledge base has its own pair in one schema, so a
 consumer reading the database directly routes on a table name rather than a
 filter. Two knowledge bases can share a database; they cannot share a prefix.
 
@@ -689,7 +689,7 @@ Content-Type: application/json
     }
   ],
   "total_results": 2,
-  "knowledge_base": "default",
+  "knowledge_base": "product-knowledge",
   "embedding_model": "gemini-embedding-2",
   "embed_ms": 656.1,
   "search_ms": 2251.6
@@ -763,7 +763,7 @@ by the client, which keeps expanding and filtering instant.
 
 ```json
 {
-  "knowledge_base": "default",
+  "knowledge_base": "product-knowledge",
   "total_documents": 3,
   "total_chunks": 25,
   "chunks_missing_embedding": 0,
@@ -823,7 +823,7 @@ What the upload endpoint accepts, so a client never has to hardcode it.
 
 ```json
 {
-  "knowledge_base": "default",
+  "knowledge_base": "product-knowledge",
   "provider": "gemini",
   "model": "gemini-embedding-2",
   "dimensions": 3072,

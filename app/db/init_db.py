@@ -293,10 +293,95 @@ async def migrate_to_prefixed_tables() -> None:
                 logger.warning(f"Left schema '{schema}' in place: {e}")
 
 
+
+async def migrate_default_slug() -> None:
+    """
+    Rename the original knowledge base from 'default' to 'product-knowledge'.
+
+    'default' described the role it plays — answering requests that name no
+    knowledge base — which is already carried by is_default. It said nothing
+    about what the tables hold, and kb_default_chunks beside
+    kb_api_catalog_chunks reads as though one of them is a fallback rather than
+    the product documentation.
+
+    Renames only, so no row is touched and nothing is re-embedded. Idempotent.
+    """
+    old_slug, new_slug = "default", "product-knowledge"
+    old_prefix, new_prefix = "kb_default", "kb_product_knowledge"
+
+    async with engine.begin() as conn:
+        if (await conn.execute(
+            text("SELECT to_regclass('public.knowledge_bases')")
+        )).scalar() is None:
+            return
+
+        exists = (
+            await conn.execute(
+                text("SELECT 1 FROM public.knowledge_bases WHERE slug = :s"),
+                {"s": old_slug},
+            )
+        ).scalar()
+        if not exists:
+            return
+
+        clash = (
+            await conn.execute(
+                text("SELECT 1 FROM public.knowledge_bases WHERE slug = :s"),
+                {"s": new_slug},
+            )
+        ).scalar()
+        if clash:
+            logger.warning(
+                f"Both '{old_slug}' and '{new_slug}' are registered; leaving them "
+                f"alone rather than guessing which should win."
+            )
+            return
+
+        for kind in ("documents", "chunks"):
+            source = f"public.{old_prefix}_{kind}"
+            target = f"{new_prefix}_{kind}"
+            if (await conn.execute(
+                text("SELECT to_regclass(:t)"), {"t": source}
+            )).scalar() is None:
+                continue
+
+            await conn.execute(text(f"ALTER TABLE {source} RENAME TO {target}"))
+
+            # Indexes are relations too, and a rename leaves them behind.
+            indexes = (
+                await conn.execute(
+                    text(
+                        "SELECT indexname FROM pg_indexes "
+                        "WHERE schemaname = 'public' AND tablename = :t"
+                    ),
+                    {"t": target},
+                )
+            ).scalars().all()
+            for index in indexes:
+                renamed = index.replace(old_prefix, new_prefix)
+                if renamed != index:
+                    await conn.execute(
+                        text(f'ALTER INDEX public."{index}" RENAME TO "{renamed}"')
+                    )
+
+            logger.info(f"Renamed {source} -> public.{target}")
+
+        await conn.execute(
+            text(
+                "UPDATE public.knowledge_bases "
+                "SET slug = :new_slug, table_prefix = :new_prefix "
+                "WHERE slug = :old_slug"
+            ),
+            {"new_slug": new_slug, "new_prefix": new_prefix, "old_slug": old_slug},
+        )
+        logger.info(f"Knowledge base '{old_slug}' is now '{new_slug}'.")
+
+
 __all__ = [
     "ControlBase",
     "SchemaMismatch",
     "init_control_db",
     "init_kb_schema",
     "migrate_to_prefixed_tables",
+    "migrate_default_slug",
 ]

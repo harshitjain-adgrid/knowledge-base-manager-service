@@ -23,6 +23,7 @@ from app.config import get_settings
 from app.db.init_db import (
     init_control_db,
     init_kb_schema,
+    migrate_default_slug,
     migrate_to_prefixed_tables,
 )
 from app.db.database import (
@@ -103,6 +104,7 @@ async def lifespan(app: FastAPI):
     # Catalogue-only renames, so no vector is rewritten and nothing is
     # re-embedded. Does nothing on a fresh install or a second start.
     await migrate_to_prefixed_tables()
+    await migrate_default_slug()
 
     async with AsyncSessionLocal() as session:
         default_kb = await kb_service.ensure_default_kb(session)

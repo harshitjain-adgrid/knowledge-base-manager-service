@@ -317,7 +317,7 @@ and fixed from then on:
   and only ever come back as `user@host:port/database` with the password removed.
 - **API keys are not per knowledge base.** They stay in the environment, one per
   provider, and are shared by every knowledge base using that provider.
-- **One schema, one table pair per knowledge base** — `kb_default_documents`,
+- **One schema, one table pair per knowledge base** — `kb_product_knowledge_documents`,
   `kb_api_catalog_chunks`, and so on. Sharing a database is fine; sharing a
   table prefix is not, and the registry's unique constraint enforces it.
 - **Removing one never drops its tables.** Unregistering is reversible; deleting
@@ -354,8 +354,8 @@ ships without touching product knowledge.
 **One schema, one pair of tables per knowledge base.** The registry names them:
 
 ```
-public.kb_default_documents      public.kb_api_catalog_documents
-public.kb_default_chunks         public.kb_api_catalog_chunks
+public.kb_product_knowledge_documents    public.kb_api_catalog_documents
+public.kb_product_knowledge_chunks       public.kb_api_catalog_chunks
 ```
 
 Separate tables rather than a shared table with a `kb_id` column, because the

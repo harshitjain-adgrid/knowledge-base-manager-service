@@ -13,7 +13,7 @@ evaluation, because that decision belongs to the orchestrator rather than to
 this service.
 
 Re-measured unchanged after the move to one schema with a table pair per
-knowledge base (`kb_default_*`, `kb_api_catalog_*`) — identical numbers in every
+knowledge base (`kb_product_knowledge_*`, `kb_api_catalog_*`) — identical numbers
 tier, which is what confirms the migration moved the data rather than rebuilding
 it.
 

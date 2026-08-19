@@ -36,7 +36,10 @@ from app.services.kb_types import KbProfile
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-DEFAULT_SLUG = "default"
+# Named for what it holds, not for the role it plays. Being the one that
+# answers requests naming no knowledge base is carried by is_default, so the
+# identifier — and the tables it names — can say something useful instead.
+DEFAULT_SLUG = "product-knowledge"
 
 # Drivers we can actually speak. asyncpg is the only async Postgres driver in
 # the dependency set, so anything else would fail later with a confusing import

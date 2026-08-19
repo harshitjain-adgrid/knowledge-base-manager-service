@@ -29,7 +29,7 @@ well retrieval works against them.
 
 ```
 seeds/
-  product/                     19 documents → the "default" knowledge base
+  product/                     19 documents → the "product-knowledge" knowledge base
     getting-started/  catalog/  offers/  khata/
     orders/  payments/  store/  reports/
 

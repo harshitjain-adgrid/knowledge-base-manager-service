@@ -27,6 +27,7 @@ import uuid
 
 HERE = pathlib.Path(__file__).parent
 PRODUCT_DIR = HERE / "product"
+PRODUCT_KB_SLUG = "product-knowledge"
 API_DIR = HERE / "api-catalog"
 
 API_KB_SLUG = "api-catalog"
@@ -232,12 +233,12 @@ def main() -> None:
         ensure_api_kb(client, args.dsn)
 
     if args.only != "api":
-        load_folder(client, PRODUCT_DIR, "default", "Product knowledge")
+        load_folder(client, PRODUCT_DIR, PRODUCT_KB_SLUG, "Product knowledge")
     if args.only != "product":
         load_folder(client, API_DIR, API_KB_SLUG, "API catalogue")
 
     print("\nTotals")
-    for kb in (["default"] if args.only != "api" else []) + \
+    for kb in ([PRODUCT_KB_SLUG] if args.only != "api" else []) + \
               ([API_KB_SLUG] if args.only != "product" else []):
         status, stats = client.get("/api/v1/stats", kb=kb)
         if status == 200:

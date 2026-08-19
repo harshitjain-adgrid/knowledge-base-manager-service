@@ -223,7 +223,7 @@ async def delete_knowledge_base(slug: str, db: AsyncSession = Depends(get_db)):
     if kb is None:
         raise HTTPException(status_code=404, detail=f"No knowledge base called '{slug}'.")
 
-    kb_id, preview = kb.id, kb.dsn_preview
+    kb_id, preview, prefix = kb.id, kb.dsn_preview, kb.table_prefix
     try:
         await kb_service.delete_kb(db, kb)
     except kb_service.KbError as e:
@@ -232,5 +232,10 @@ async def delete_knowledge_base(slug: str, db: AsyncSession = Depends(get_db)):
     await dispose_kb_engine(kb_id)
     return MessageResponse(
         message=f"'{slug}' was removed from the registry.",
-        detail=f"Its documents and vectors at {preview} were left untouched.",
+        # Named tables rather than just the host: several knowledge bases can
+        # share one database, so the host alone does not say what was kept.
+        detail=(
+            f"Its tables ({prefix}_documents, {prefix}_chunks) at {preview} "
+            f"were left untouched."
+        ),
     )

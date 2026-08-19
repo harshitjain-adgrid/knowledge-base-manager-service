@@ -23,8 +23,8 @@ class ControlBase(DeclarativeBase):
 # ── Knowledge base tables ───────────────────────────────────────────────────
 #
 # Every knowledge base gets its own pair of tables in one schema, named after
-# its registry prefix: kb_default_documents / kb_default_chunks,
-# kb_api_catalog_documents / kb_api_catalog_chunks.
+# its registry prefix: kb_product_knowledge_documents /
+# kb_product_knowledge_chunks, kb_api_catalog_documents / kb_api_catalog_chunks.
 #
 # Separate tables rather than one pair with a kb_id column, for one decisive
 # reason: the embedding width lives on the column. A shared table has a single

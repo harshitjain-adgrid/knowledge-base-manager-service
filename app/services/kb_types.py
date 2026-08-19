@@ -57,9 +57,9 @@ def default_profile() -> KbProfile:
     """
     return KbProfile(
         id=uuid.UUID(int=0),
-        slug="default",
-        name="Default",
-        table_prefix="kb_default",
+        slug="product-knowledge",
+        name="Product knowledge",
+        table_prefix="kb_product_knowledge",
         embedding=default_config(),
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,

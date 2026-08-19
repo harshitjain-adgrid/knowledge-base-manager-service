@@ -289,7 +289,7 @@ def main():
     parser.add_argument("--base", default="http://127.0.0.1:8000")
     parser.add_argument("--user", default="admin")
     parser.add_argument("--password", default=os.environ.get("CHOTU_PASSWORD"))
-    parser.add_argument("--product-kb", default="default")
+    parser.add_argument("--product-kb", default="product-knowledge")
     parser.add_argument("--api-kb", default="api-catalog")
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--product-floor", type=float, default=0.70,
