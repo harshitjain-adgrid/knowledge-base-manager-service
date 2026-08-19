@@ -376,6 +376,9 @@ class KnowledgeBaseResponse(BaseModel):
     slug: str
     name: str
     description: str | None = None
+    # Names this knowledge base's tables: <prefix>_documents and <prefix>_chunks.
+    # A consumer reading the database directly routes on this.
+    table_prefix: str
     # user@host:port/database — the password is not part of this
     dsn_preview: str
     embedding_provider: str

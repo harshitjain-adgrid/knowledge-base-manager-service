@@ -28,6 +28,7 @@ def _to_response(kb: KnowledgeBase) -> KnowledgeBaseResponse:
         slug=kb.slug,
         name=kb.name,
         description=kb.description,
+        table_prefix=kb.table_prefix,
         dsn_preview=kb.dsn_preview,
         embedding_provider=kb.embedding_provider,
         embedding_model=kb.embedding_model,

@@ -20,7 +20,11 @@ from app.api.middleware import (
 )
 from app.api.schemas import HealthResponse
 from app.config import get_settings
-from app.db.init_db import init_control_db, init_kb_schema
+from app.db.init_db import (
+    init_control_db,
+    init_kb_schema,
+    migrate_to_prefixed_tables,
+)
 from app.db.database import (
     AsyncSessionLocal,
     ReadOnlySessionLocal,
@@ -69,14 +73,7 @@ async def _check_other_knowledge_bases() -> None:
                     kb_service.engine_for(kb), timeout=KB_STARTUP_TIMEOUT_SECONDS
                 )
                 await asyncio.wait_for(
-                    init_kb_schema(
-                        kb_engine,
-                        kb.embedding_dimensions,
-                        kb_id=kb.id,
-                        kb_slug=kb.slug,
-                        provider=kb.embedding_provider,
-                        model=kb.embedding_model,
-                    ),
+                    init_kb_schema(kb_engine, kb.table_prefix, kb.embedding_dimensions),
                     timeout=KB_STARTUP_TIMEOUT_SECONDS,
                 )
             except Exception as e:
@@ -102,18 +99,18 @@ async def lifespan(app: FastAPI):
     # The control plane first: it holds the registry that says which knowledge
     # bases exist, including the default one this service was configured with.
     await init_control_db()
+    # Moves a pre-prefix installation onto per-knowledge-base table names.
+    # Catalogue-only renames, so no vector is rewritten and nothing is
+    # re-embedded. Does nothing on a fresh install or a second start.
+    await migrate_to_prefixed_tables()
 
     async with AsyncSessionLocal() as session:
         default_kb = await kb_service.ensure_default_kb(session)
+        await kb_service.normalise_stored_dsns(session)
         await session.commit()
 
     await init_kb_schema(
-        engine,
-        default_kb.embedding_dimensions,
-        kb_id=default_kb.id,
-        kb_slug=default_kb.slug,
-        provider=default_kb.embedding_provider,
-        model=default_kb.embedding_model,
+        engine, default_kb.table_prefix, default_kb.embedding_dimensions
     )
     logger.info("Database initialised. Server is ready.")
 

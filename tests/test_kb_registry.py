@@ -9,7 +9,7 @@ live server instead.
 
 import pytest
 
-from app.db.database import split_schema
+from app.db.models import TABLE_PREFIX_RE, kb_models
 from app.services import crypto_service, kb_service
 from app.services.kb_service import KbError
 
@@ -53,43 +53,65 @@ def test_unusable_connection_strings_are_refused_with_a_reason(bad, expected):
     assert expected in str(error.value)
 
 
-# ── The schema parameter ─────────────────────────────────────────────────────
-
-def test_a_schema_survives_normalisation():
-    dsn = kb_service.normalise_dsn("postgresql://u:p@h:5432/db?schema=team_kb")
-    assert dsn == "postgresql+asyncpg://u:p@h:5432/db?schema=team_kb"
-
-
-def test_split_schema_separates_the_url_from_the_schema():
-    url, schema = split_schema("postgresql+asyncpg://u:p@h:5432/db?schema=team_kb")
-    assert url == "postgresql+asyncpg://u:p@h:5432/db"
-    assert schema == "team_kb"
-
-
-def test_split_schema_leaves_an_ordinary_url_alone():
-    assert split_schema("postgresql+asyncpg://u:p@h/db") == (
-        "postgresql+asyncpg://u:p@h/db",
-        None,
-    )
-
-
-def test_other_query_parameters_are_kept():
-    url, schema = split_schema(
-        "postgresql+asyncpg://u:p@h/db?schema=team_kb&application_name=chotu"
-    )
-    assert schema == "team_kb"
-    assert "application_name=chotu" in url
-    assert "schema=" not in url
-
+# ── Table prefixes ───────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize(
-    "bad", ["Team-KB", "1team", "team kb", "team;drop", "public.evil", "a" * 70]
+    "slug, prefix",
+    [
+        ("default", "kb_default"),
+        ("api-catalog", "kb_api_catalog"),
+        ("merchant-ops-v2", "kb_merchant_ops_v2"),
+        ("a", "kb_a"),
+    ],
 )
-def test_a_schema_name_that_would_need_quoting_is_refused(bad):
-    # Schema names reach DDL, so anything that is not a plain identifier is
-    # rejected at the door rather than escaped later.
-    with pytest.raises(KbError):
-        kb_service.normalise_dsn(f"postgresql://u:p@h/db?schema={bad}")
+def test_a_slug_maps_to_a_table_prefix(slug, prefix):
+    # Deterministic, so a knowledge base's tables can be found from its slug
+    # alone — which is what a consumer reading the database directly does.
+    assert kb_service.table_prefix_for(slug) == prefix
+
+
+def test_every_derived_prefix_is_safe_to_put_in_ddl():
+    for slug in ["api-catalog", "a" * 60, "123", "MiXeD-Case"]:
+        assert TABLE_PREFIX_RE.match(kb_service.table_prefix_for(slug)), slug
+
+
+def test_models_refuse_a_prefix_that_is_not_safe():
+    for bad in ["documents", "kb_x; drop table y", "KB_UPPER", "kb-hyphen", ""]:
+        with pytest.raises(ValueError):
+            kb_models(bad)
+
+
+def test_a_prefix_names_both_of_its_tables():
+    Document, Chunk = kb_models("kb_api_catalog")
+    assert Document.__tablename__ == "kb_api_catalog_documents"
+    assert Chunk.__tablename__ == "kb_api_catalog_chunks"
+
+
+def test_two_knowledge_bases_get_genuinely_separate_classes():
+    # The whole point: one cannot reach the other's rows.
+    a_doc, a_chunk = kb_models("kb_default")
+    b_doc, b_chunk = kb_models("kb_api_catalog")
+    assert a_doc is not b_doc and a_chunk is not b_chunk
+    assert a_doc.__tablename__ != b_doc.__tablename__
+
+
+def test_the_classes_for_one_prefix_are_built_once():
+    assert kb_models("kb_default")[0] is kb_models("kb_default")[0]
+
+
+def test_a_schema_parameter_is_dropped_from_a_connection_string():
+    # It used to isolate a knowledge base. Table prefixes do that now, so the
+    # parameter is stripped rather than honoured or rejected.
+    dsn = kb_service.normalise_dsn("postgresql://u:p@h:5432/db?schema=team_kb")
+    assert "schema" not in dsn
+    assert dsn == "postgresql+asyncpg://u:p@h:5432/db"
+
+
+def test_other_query_parameters_survive():
+    dsn = kb_service.normalise_dsn(
+        "postgresql://u:p@h/db?application_name=chotu&schema=x"
+    )
+    assert "application_name=chotu" in dsn and "schema" not in dsn
 
 
 # ── Previews never carry the password ────────────────────────────────────────
@@ -100,14 +122,6 @@ def test_the_preview_drops_the_password():
     )
     assert preview == "kb_user@10.0.0.7:5432/ops"
     assert "hunter2" not in preview
-
-
-def test_the_preview_names_the_schema():
-    preview = kb_service.dsn_preview(
-        kb_service.normalise_dsn("postgresql://u:secret@h:5432/db?schema=team_kb")
-    )
-    assert preview == "u@h:5432/db (schema team_kb)"
-    assert "secret" not in preview
 
 
 def test_the_preview_survives_a_password_with_url_characters():

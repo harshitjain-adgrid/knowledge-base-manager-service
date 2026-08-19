@@ -7,7 +7,6 @@ from sqlalchemy.orm import noload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db.models import KnowledgeDocument, KnowledgeChunk
 from app.services.chunking_service import chunk_document
 from app.services.embedding_service import generate_embeddings, model_uses_title
 from app.services.kb_types import KbProfile, default_profile
@@ -28,7 +27,7 @@ async def add_document(
     folder_path: str = "/",
     source_format: str = "manual",
     profile: KbProfile | None = None,
-) -> tuple[KnowledgeDocument, int]:
+) -> tuple:
     """
     Add a new document to the knowledge base.
 
@@ -41,6 +40,7 @@ async def add_document(
     Returns (document, chunk_count) to avoid stale relationship issues.
     """
     profile = profile or default_profile()
+    KnowledgeDocument, KnowledgeChunk = profile.tables
 
     # 1. Create the document record
     document = KnowledgeDocument(
@@ -103,7 +103,7 @@ async def update_document(
     metadata: dict | None = None,
     folder_path: str | None = None,
     profile: KbProfile | None = None,
-) -> tuple[KnowledgeDocument, int]:
+) -> tuple:
     """
     Update an existing document. If content or doc_type changes,
     re-chunk and re-embed everything.
@@ -111,6 +111,7 @@ async def update_document(
     Returns (document, chunk_count) to avoid stale relationship issues.
     """
     profile = profile or default_profile()
+    KnowledgeDocument, KnowledgeChunk = profile.tables
 
     # Fetch existing document
     document = await db.get(KnowledgeDocument, document_id)
@@ -199,11 +200,16 @@ async def update_document(
     return document, chunk_count
 
 
-async def delete_document(db: AsyncSession, document_id: uuid.UUID) -> bool:
+async def delete_document(
+    db: AsyncSession, document_id: uuid.UUID, profile: KbProfile | None = None
+) -> bool:
     """
     Delete a document and all its chunks (cascaded via FK).
     Returns True if document existed and was deleted.
     """
+    profile = profile or default_profile()
+    KnowledgeDocument, KnowledgeChunk = profile.tables
+
     document = await db.get(KnowledgeDocument, document_id)
     if not document:
         return False
@@ -214,24 +220,31 @@ async def delete_document(db: AsyncSession, document_id: uuid.UUID) -> bool:
 
 
 async def get_document(
-    db: AsyncSession, document_id: uuid.UUID
-) -> KnowledgeDocument | None:
+    db: AsyncSession, document_id: uuid.UUID, profile: KbProfile | None = None
+):
     """Fetch a single document with its chunks."""
+    profile = profile or default_profile()
+    KnowledgeDocument, KnowledgeChunk = profile.tables
+
     return await db.get(KnowledgeDocument, document_id)
 
 
 async def list_documents(
     db: AsyncSession,
+    profile: KbProfile | None = None,
     doc_type: str | None = None,
     search: str | None = None,
     folder: str | None = None,
     skip: int = 0,
     limit: int = 20,
-) -> tuple[list[KnowledgeDocument], int]:
+) -> tuple[list, int]:
     """
     List documents with optional filtering, keyword search, and pagination.
     Returns (documents, total_count).
     """
+    profile = profile or default_profile()
+    KnowledgeDocument, KnowledgeChunk = profile.tables
+
     # Base query. noload() on chunks is essential: the relationship is
     # lazy="selectin", so without it every listed document would pull in all of
     # its chunks and their embeddings — megabytes of vectors to render a table.
@@ -275,7 +288,7 @@ async def list_documents(
 
 
 async def chunk_counts_for(
-    db: AsyncSession, document_ids: list[uuid.UUID]
+    db: AsyncSession, document_ids: list[uuid.UUID], profile: KbProfile | None = None
 ) -> dict[uuid.UUID, int]:
     """
     Count chunks per document in one aggregate query.
@@ -283,6 +296,9 @@ async def chunk_counts_for(
     Used instead of len(document.chunks) so listing documents never loads
     embeddings.
     """
+    profile = profile or default_profile()
+    KnowledgeDocument, KnowledgeChunk = profile.tables
+
     if not document_ids:
         return {}
 
@@ -298,6 +314,7 @@ async def chunk_counts_for(
 async def search_similar(
     db: AsyncSession,
     query_embedding: list[float],
+    profile: KbProfile | None = None,
     top_k: int = 5,
     doc_type: str | None = None,
     folder: str | None = None,
@@ -308,6 +325,9 @@ async def search_similar(
     Returns the top_k most similar chunks with their similarity scores
     and parent document info.
     """
+    profile = profile or default_profile()
+    KnowledgeDocument, KnowledgeChunk = profile.tables
+
     # Build the similarity search query using pgvector's cosine distance
     query = (
         select(
@@ -365,41 +385,48 @@ async def get_stats(db: AsyncSession, profile: KbProfile | None = None) -> dict:
     that destroys retrieval without any error surfacing.
     """
     profile = profile or default_profile()
+    KnowledgeDocument, KnowledgeChunk = profile.tables
+
+    # Table names are interpolated rather than bound, because a parameter
+    # cannot stand in for an identifier. The prefix is regex-validated when it
+    # is stored and again when the models are built, and is unique-constrained
+    # in the registry — it never carries anything a user typed freely.
+    documents, chunks = f"{profile.table_prefix}_documents", f"{profile.table_prefix}_chunks"
 
     result = (
         await db.execute(
             text(
                 """
                 WITH doc_totals AS (
-                    SELECT count(*) AS total FROM knowledge_documents
+                    SELECT count(*) AS total FROM {documents}
                 ),
                 chunk_totals AS (
                     SELECT count(*) AS total,
                            count(*) FILTER (WHERE embedding IS NULL) AS missing,
                            min(vector_dims(embedding)) FILTER (WHERE embedding IS NOT NULL)
                                AS stored_dims
-                    FROM knowledge_chunks
+                    FROM {chunks}
                 ),
                 by_type AS (
                     SELECT coalesce(jsonb_object_agg(doc_type, n), '{}'::jsonb) AS j
                     FROM (SELECT doc_type, count(*) AS n
-                          FROM knowledge_documents GROUP BY doc_type) t
+                          FROM {documents} GROUP BY doc_type) t
                 ),
                 by_format AS (
                     SELECT coalesce(jsonb_object_agg(source_format, n), '{}'::jsonb) AS j
                     FROM (SELECT source_format, count(*) AS n
-                          FROM knowledge_documents GROUP BY source_format) t
+                          FROM {documents} GROUP BY source_format) t
                 ),
                 by_folder AS (
                     SELECT coalesce(jsonb_object_agg(folder_path, n), '{}'::jsonb) AS j
                     FROM (SELECT folder_path, count(*) AS n
-                          FROM knowledge_documents GROUP BY folder_path) t
+                          FROM {documents} GROUP BY folder_path) t
                 ),
                 recent AS (
                     SELECT coalesce(jsonb_agg(r ORDER BY r.created_at DESC), '[]'::jsonb) AS j
                     FROM (
                         SELECT id, title, doc_type, source_format, folder_path, created_at
-                        FROM knowledge_documents
+                        FROM {documents}
                         ORDER BY created_at DESC
                         LIMIT 5
                     ) r
@@ -412,9 +439,9 @@ async def get_stats(db: AsyncSession, profile: KbProfile | None = None) -> dict:
                        by_format.j               AS documents_by_format,
                        by_folder.j               AS documents_by_folder,
                        recent.j                  AS recent_documents,
-                       pg_total_relation_size('knowledge_chunks') AS chunk_storage_bytes
+                       pg_total_relation_size('{chunks}') AS chunk_storage_bytes
                 FROM doc_totals, chunk_totals, by_type, by_format, by_folder, recent
-                """
+                """.replace("{documents}", documents).replace("{chunks}", chunks)
             )
         )
     ).one()
@@ -450,7 +477,7 @@ async def replace_document_content(
     source_format: str | None = None,
     metadata: dict | None = None,
     profile: KbProfile | None = None,
-) -> tuple[KnowledgeDocument, int]:
+) -> tuple:
     """
     Replace a document's content entirely (e.g., uploading a new PDF over an old one).
 
@@ -459,6 +486,7 @@ async def replace_document_content(
     Returns (document, chunk_count).
     """
     profile = profile or default_profile()
+    KnowledgeDocument, KnowledgeChunk = profile.tables
 
     document = await db.get(KnowledgeDocument, document_id)
     if not document:
@@ -526,7 +554,7 @@ async def append_document_content(
     additional_content: str,
     metadata: dict | None = None,
     profile: KbProfile | None = None,
-) -> tuple[KnowledgeDocument, int]:
+) -> tuple:
     """
     Append content to an existing document.
 
@@ -536,6 +564,7 @@ async def append_document_content(
     Returns (document, chunk_count).
     """
     profile = profile or default_profile()
+    KnowledgeDocument, KnowledgeChunk = profile.tables
 
     document = await db.get(KnowledgeDocument, document_id)
     if not document:
@@ -630,7 +659,7 @@ def ancestors_of(path: str) -> list[str]:
     return result
 
 
-async def get_tree(db: AsyncSession) -> dict:
+async def get_tree(db: AsyncSession, profile: KbProfile | None = None) -> dict:
     """
     Everything the directory tree needs, in two queries.
 
@@ -641,6 +670,9 @@ async def get_tree(db: AsyncSession) -> dict:
     Only scalar columns are selected — never the ORM entity — so chunk
     embeddings are never loaded.
     """
+    profile = profile or default_profile()
+    KnowledgeDocument, KnowledgeChunk = profile.tables
+
     rows = (
         await db.execute(
             select(

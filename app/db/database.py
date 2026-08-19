@@ -1,6 +1,5 @@
 import logging
 import uuid
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy.ext.asyncio import (
     create_async_engine,
@@ -84,38 +83,6 @@ async def get_readonly_db() -> AsyncSession:
 _kb_engines: dict[uuid.UUID, tuple[str, AsyncEngine]] = {}
 
 
-def split_schema(dsn: str) -> tuple[str, str | None]:
-    """
-    Pull an optional `?schema=` off a connection string.
-
-    Postgres users often cannot create databases — the usual grant is CREATE on
-    one schema. Naming a schema lets a knowledge base live beside others on the
-    same database without a DBA in the loop, and without any of them being able
-    to see each other's tables.
-
-    The name is put on the connection's search_path rather than into every
-    query, so the models and SQL stay unqualified and identical everywhere.
-    """
-    parts = urlsplit(dsn)
-    if not parts.query:
-        return dsn, None
-
-    params = parse_qsl(parts.query, keep_blank_values=False)
-    schema = None
-    remaining = []
-    for key, value in params:
-        if key == "schema":
-            schema = value or None
-        else:
-            remaining.append((key, value))
-
-    if schema is None:
-        return dsn, None
-    return urlunsplit(
-        (parts.scheme, parts.netloc, parts.path, urlencode(remaining), "")
-    ), schema
-
-
 async def get_kb_engine(kb_id: uuid.UUID, dsn: str) -> AsyncEngine:
     """Return the engine for a knowledge base, creating its pool on first use."""
     if dsn == settings.database_url:
@@ -133,20 +100,12 @@ async def get_kb_engine(kb_id: uuid.UUID, dsn: str) -> AsyncEngine:
     # Smaller than the control pool on purpose: there can be many of these, and
     # a knowledge base nobody is looking at should not hold ten connections
     # open on someone else's database.
-    url, schema = split_schema(dsn)
     new_engine = create_async_engine(
-        url,
+        dsn,
         echo=False,
         pool_size=3,
         max_overflow=5,
         pool_pre_ping=True,  # remote hosts and tunnels drop idle connections
-        connect_args=(
-            # public comes second so the pgvector type resolves, while every
-            # table this service creates still lands in the named schema.
-            {"server_settings": {"search_path": f"{schema}, public"}}
-            if schema
-            else {}
-        ),
     )
     _kb_engines[kb_id] = (dsn, new_engine)
     return new_engine

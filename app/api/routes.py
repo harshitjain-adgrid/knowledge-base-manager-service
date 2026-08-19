@@ -124,12 +124,16 @@ async def list_documents(
     folder: str | None = Query(None, description="Filter by folder path"),
     skip: int = Query(0, ge=0, description="Number of documents to skip"),
     limit: int = Query(20, ge=1, le=100, description="Max documents to return"),
+    context: KbContext = Depends(resolve_kb),
     db: AsyncSession = Depends(kb_readonly_db),
 ):
     documents, total = await knowledge_service.list_documents(
-        db=db, doc_type=doc_type, search=search, folder=folder, skip=skip, limit=limit
+        db=db, profile=context.profile, doc_type=doc_type, search=search,
+        folder=folder, skip=skip, limit=limit,
     )
-    counts = await knowledge_service.chunk_counts_for(db, [d.id for d in documents])
+    counts = await knowledge_service.chunk_counts_for(
+        db, [d.id for d in documents], context.profile
+    )
     return DocumentListResponse(
         documents=[
             _build_document_response(doc, counts.get(doc.id, 0)) for doc in documents
@@ -149,9 +153,10 @@ async def list_documents(
 )
 async def get_document(
     document_id: uuid.UUID,
+    context: KbContext = Depends(resolve_kb),
     db: AsyncSession = Depends(kb_readonly_db),
 ):
-    document = await knowledge_service.get_document(db, document_id)
+    document = await knowledge_service.get_document(db, document_id, context.profile)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found.")
 
@@ -233,9 +238,10 @@ async def update_document(
 )
 async def delete_document(
     document_id: uuid.UUID,
+    context: KbContext = Depends(resolve_kb),
     db: AsyncSession = Depends(kb_db),
 ):
-    deleted = await knowledge_service.delete_document(db, document_id)
+    deleted = await knowledge_service.delete_document(db, document_id, context.profile)
     if not deleted:
         raise HTTPException(status_code=404, detail="Document not found.")
 
@@ -276,6 +282,7 @@ async def search_knowledge_base(
         results = await knowledge_service.search_similar(
             db=db,
             query_embedding=query_embedding,
+            profile=context.profile,
             top_k=payload.top_k,
             doc_type=payload.doc_type,
             folder=payload.folder,
@@ -466,9 +473,10 @@ async def append_document_content(
     "intermediate levels. Chunk embeddings are never loaded.",
 )
 async def get_tree(
+    context: KbContext = Depends(resolve_kb),
     db: AsyncSession = Depends(kb_readonly_db),
 ):
-    return TreeResponse(**await knowledge_service.get_tree(db))
+    return TreeResponse(**await knowledge_service.get_tree(db, context.profile))
 
 
 @router.get(

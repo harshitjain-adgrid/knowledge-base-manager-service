@@ -31,7 +31,6 @@ API_DIR = HERE / "api-catalog"
 
 API_KB_SLUG = "api-catalog"
 API_KB_NAME = "API Catalog"
-API_KB_SCHEMA = "api_catalog"
 
 # Big enough that a card is never split, and no overlap — there is nothing for
 # a single-chunk document to overlap with.
@@ -130,7 +129,9 @@ def ensure_api_kb(client: Client, dsn: str) -> None:
         sys.exit(
             "The API catalogue knowledge base does not exist yet and no --dsn was\n"
             "given. Pass the connection string for it, for example:\n"
-            f"  --dsn 'postgresql://user:pass@host:5432/db?schema={API_KB_SCHEMA}'"
+            "  --dsn 'postgresql://user:pass@host:5432/vector_qa'\n"
+            "The same database this service already uses is fine — a knowledge\n"
+            "base gets its own tables, not its own schema."
         )
 
     print(f"  creating knowledge base '{API_KB_SLUG}'...")
@@ -215,7 +216,8 @@ def main() -> None:
     parser.add_argument("--password", default=os.environ.get("CHOTU_PASSWORD"))
     parser.add_argument("--dsn", default=os.environ.get("CHOTU_API_KB_DSN"),
                         help="Connection string for the API catalogue knowledge "
-                             "base. Only needed the first time.")
+                             "base. Only needed the first time. The same database "
+                             "as the service's own is fine.")
     parser.add_argument("--only", choices=["product", "api"],
                         help="Load just one side.")
     args = parser.parse_args()

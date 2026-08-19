@@ -65,7 +65,7 @@ string; a schema on the same Postgres is enough and needs no new database.
 ```bash
 python seeds/load_seeds.py \
   --base http://127.0.0.1:8000 \
-  --dsn 'postgresql://user:password@127.0.0.1:5434/vector_qa?schema=api_catalog'
+  --dsn 'postgresql://user:password@127.0.0.1:5434/vector_qa'
 ```
 
 After the first run the `--dsn` is not needed again:

@@ -12,6 +12,11 @@ ranking that turn chunk hits into one API live in `selection.py` beside the
 evaluation, because that decision belongs to the orchestrator rather than to
 this service.
 
+Re-measured unchanged after the move to one schema with a table pair per
+knowledge base (`kb_default_*`, `kb_api_catalog_*`) — identical numbers in every
+tier, which is what confirms the migration moved the data rather than rebuilding
+it.
+
 ```
 PRODUCT KNOWLEDGE  (recall@5)
   easy          19/19  100.0%

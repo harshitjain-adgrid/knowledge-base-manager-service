@@ -12,6 +12,7 @@ import uuid
 from dataclasses import dataclass
 
 from app.config import get_settings
+from app.db.models import kb_models
 from app.services.embedding_service import EmbeddingConfig, default_config
 
 settings = get_settings()
@@ -24,9 +25,18 @@ class KbProfile:
     id: uuid.UUID
     slug: str
     name: str
+    # Names this knowledge base's tables. Everything that reads or writes its
+    # content goes through the classes this resolves to, so there is no way to
+    # touch one knowledge base while holding another's profile.
+    table_prefix: str
     embedding: EmbeddingConfig
     chunk_size: int
     chunk_overlap: int
+
+    @property
+    def tables(self) -> tuple[type, type]:
+        """The (Document, Chunk) ORM classes for this knowledge base."""
+        return kb_models(self.table_prefix)
 
     @property
     def model(self) -> str:
@@ -49,6 +59,7 @@ def default_profile() -> KbProfile:
         id=uuid.UUID(int=0),
         slug="default",
         name="Default",
+        table_prefix="kb_default",
         embedding=default_config(),
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,

@@ -22,9 +22,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 from sqlalchemy import text as sql_text
 
 from app.config import get_settings
-from app.db.database import get_kb_engine, split_schema
-from app.db.init_db import SchemaMismatch, init_kb_schema, release_kb_claim
-from app.db.models import KnowledgeBase
+from app.db.database import get_kb_engine
+from app.db.init_db import SchemaMismatch, init_kb_schema
+from app.db.models import TABLE_PREFIX_RE, KnowledgeBase
 from app.services import crypto_service
 from app.services.embedding_service import (
     MODEL_SPECS,
@@ -45,9 +45,25 @@ _ASYNC_DRIVER = "postgresql+asyncpg"
 _ACCEPTED_SCHEMES = {"postgres", "postgresql", "postgresql+asyncpg"}
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$")
-# Schema names go into DDL, so they are constrained to something that can never
-# need quoting or escaping.
-SCHEMA_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
+
+
+# Postgres truncates an identifier at 63 bytes without complaining. The longest
+# suffix appended to a prefix is "_documents", so the prefix has to stop at 53
+# for the table name to survive intact — two long slugs that differ only past
+# that point would otherwise silently land on the same table.
+MAX_TABLE_PREFIX = 51
+
+
+def table_prefix_for(slug: str) -> str:
+    """
+    The table prefix a slug maps to: 'api-catalog' -> 'kb_api_catalog'.
+
+    Deterministic, so a knowledge base's tables can be found from its slug
+    alone — which is what a consumer reading the database directly does when it
+    routes an intent.
+    """
+    body = re.sub(r"[^a-z0-9]+", "_", slug.lower()).strip("_") or "kb"
+    return ("kb_" + body)[:MAX_TABLE_PREFIX].rstrip("_")
 
 
 class KbError(ValueError):
@@ -83,16 +99,11 @@ def normalise_dsn(raw: str) -> str:
     if not parts.path.strip("/"):
         raise KbError("The connection string has no database name.")
 
-    # `?schema=name` is ours, not libpq's. It exists because a Postgres user is
-    # far more likely to hold CREATE on one schema than CREATEDB on the server,
-    # and needing a DBA to add a knowledge base would defeat the point of a form.
-    query = parse_qsl(parts.query, keep_blank_values=False)
-    for key, value in query:
-        if key == "schema" and not SCHEMA_RE.match(value):
-            raise KbError(
-                f"'{value}' is not a valid schema name. Use lowercase letters, "
-                f"numbers and underscores, starting with a letter."
-            )
+    # A knowledge base no longer needs a schema of its own: its tables are
+    # named after its registry prefix, so several can share one schema without
+    # touching each other.
+    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=False)
+             if k != "schema"]
 
     return urlunsplit((_ASYNC_DRIVER, parts.netloc, parts.path, urlencode(query), ""))
 
@@ -104,12 +115,27 @@ def dsn_preview(dsn: str) -> str:
     This is what the UI shows, so an admin can tell two knowledge bases apart
     without the credentials ever leaving the server.
     """
-    url, schema = split_schema(dsn)
-    parts = urlsplit(url)
+    parts = urlsplit(dsn)
     user = f"{parts.username}@" if parts.username else ""
     port = f":{parts.port}" if parts.port else ""
-    suffix = f" (schema {schema})" if schema else ""
-    return f"{user}{parts.hostname or '?'}{port}{parts.path}{suffix}"
+    return f"{user}{parts.hostname or '?'}{port}{parts.path}"
+
+
+def strip_schema_parameter(dsn: str) -> str:
+    """
+    Remove a `?schema=` left over from when each knowledge base had a schema.
+
+    Applied on the way out of storage rather than only at migration time,
+    because a stored value written by an older build would otherwise reach the
+    driver as an unknown connect argument and fail every query against that
+    knowledge base.
+    """
+    parts = urlsplit(dsn)
+    if "schema=" not in (parts.query or ""):
+        return dsn
+    kept = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=False)
+            if k != "schema"]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(kept), ""))
 
 
 def resolve_dsn(kb: KnowledgeBase) -> str:
@@ -122,7 +148,7 @@ def resolve_dsn(kb: KnowledgeBase) -> str:
     """
     if kb.dsn_encrypted is None:
         return settings.database_url
-    return crypto_service.decrypt(kb.dsn_encrypted)
+    return strip_schema_parameter(crypto_service.decrypt(kb.dsn_encrypted))
 
 
 async def test_connection(dsn: str) -> tuple[bool, str]:
@@ -133,19 +159,10 @@ async def test_connection(dsn: str) -> tuple[bool, str]:
     Deliberately not reusing a pooled engine: this runs before a knowledge base
     exists, and a failed attempt should leave nothing behind.
     """
-    url, schema = split_schema(dsn)
     probe: AsyncEngine | None = None
     try:
         probe = create_async_engine(
-            url,
-            pool_pre_ping=True,
-            pool_size=1,
-            max_overflow=0,
-            connect_args=(
-                {"server_settings": {"search_path": f"{schema}, public"}}
-                if schema
-                else {}
-            ),
+            dsn, pool_pre_ping=True, pool_size=1, max_overflow=0
         )
         async with probe.connect() as conn:
             version = (await conn.execute(sql_text("SELECT version()"))).scalar()
@@ -161,14 +178,10 @@ async def test_connection(dsn: str) -> tuple[bool, str]:
             ).scalar()
 
         server = (version or "PostgreSQL").split(" on ")[0]
-        where = f" (schema {schema})" if schema else ""
         if installed:
-            return True, f"Connected — {server}, pgvector {installed} installed.{where}"
+            return True, f"Connected — {server}, pgvector {installed} installed."
         if has_vector:
-            return True, (
-                f"Connected — {server}. pgvector is available and will be "
-                f"enabled.{where}"
-            )
+            return True, f"Connected — {server}. pgvector is available and will be enabled."
         return False, (
             f"Connected to {server}, but the pgvector extension is not available "
             f"on this server. Install it before using this database as a "
@@ -214,6 +227,7 @@ def profile_for(kb: KnowledgeBase) -> KbProfile:
         id=kb.id,
         slug=kb.slug,
         name=kb.name,
+        table_prefix=kb.table_prefix,
         embedding=EmbeddingConfig(
             provider=kb.embedding_provider,
             model=kb.embedding_model,
@@ -340,31 +354,24 @@ async def create_kb(
     if await get_by_slug(db, slug) is not None:
         raise KbError(f"A knowledge base with the identifier '{slug}' already exists.")
 
+    prefix = table_prefix_for(slug)
+    if not TABLE_PREFIX_RE.match(prefix):
+        raise KbError(f"The identifier '{slug}' does not map to a usable table name.")
+
+    # Long identifiers are shortened to fit a Postgres table name, so two that
+    # differ only near the end can arrive at the same prefix.
+    for existing in await list_kbs(db):
+        if existing.table_prefix == prefix:
+            raise KbError(
+                f"'{slug}' would use the same tables as '{existing.slug}' "
+                f"({prefix}_documents). Choose a shorter or more distinct "
+                f"identifier."
+            )
+
     normalised = normalise_dsn(dsn)
 
-    if normalised == settings.database_url:
-        raise KbError(
-            "That is this service's own database, which is already the default "
-            "knowledge base. Point this one at a different database."
-        )
-
-    # Two knowledge bases sharing a database would share its tables, and every
-    # document would appear in both. Compared after decryption because the
-    # stored form is ciphertext and no two encryptions of the same string match.
-    registered = await list_kbs(db)
-    known_ids = {existing.id for existing in registered}
-    for existing in registered:
-        try:
-            if resolve_dsn(existing) == normalised:
-                raise KbError(
-                    f"'{existing.name}' already uses that database. Two knowledge "
-                    f"bases cannot share one, because they would share its "
-                    f"documents."
-                )
-        except crypto_service.SecretsUnavailable:
-            # Cannot read that one's DSN to compare. Not a reason to block this
-            # create; the unreadable one is already broken and says so elsewhere.
-            continue
+    # Sharing a database is fine now — each knowledge base has its own tables.
+    # Sharing a prefix is not, and the registry's unique constraint enforces it.
 
     if not crypto_service.is_available():
         raise KbError(
@@ -381,6 +388,7 @@ async def create_kb(
     kb = KnowledgeBase(
         slug=slug,
         name=name,
+        table_prefix=prefix,
         description=(description or "").strip() or None,
         dsn_encrypted=crypto_service.encrypt(normalised),
         dsn_preview=dsn_preview(normalised),
@@ -401,15 +409,7 @@ async def create_kb(
     # knowledge base that cannot store anything.
     kb_engine = await get_kb_engine(kb.id, normalised)
     try:
-        await init_kb_schema(
-            kb_engine,
-            embedding_dimensions,
-            kb_id=kb.id,
-            kb_slug=slug,
-            provider=embedding_provider.lower(),
-            model=embedding_model,
-            known_kb_ids=known_ids,
-        )
+        await init_kb_schema(kb_engine, prefix, embedding_dimensions)
     except SchemaMismatch as e:
         raise KbError(str(e))
 
@@ -470,14 +470,7 @@ async def update_kb(
 
         kb_engine = await get_kb_engine(kb.id, normalised)
         try:
-            await init_kb_schema(
-                kb_engine,
-                kb.embedding_dimensions,
-                kb_id=kb.id,
-                kb_slug=kb.slug,
-                provider=kb.embedding_provider,
-                model=kb.embedding_model,
-            )
+            await init_kb_schema(kb_engine, kb.table_prefix, kb.embedding_dimensions)
         except SchemaMismatch as e:
             raise KbError(str(e))
 
@@ -506,22 +499,11 @@ async def delete_kb(db: AsyncSession, kb: KnowledgeBase) -> None:
             "default first."
         )
 
-    # Hand the database back before forgetting how to reach it, so registering
-    # it again later is possible. Best effort: an unreachable host is not a
-    # reason to refuse to unregister, and the stale claim is adopted on the way
-    # back in anyway.
-    try:
-        await release_kb_claim(await engine_for(kb))
-    except Exception as e:
-        logger.warning(
-            f"Could not release the ownership marker for '{kb.slug}': {e}. "
-            f"Re-registering that database will adopt the stale claim."
-        )
-
     await db.delete(kb)
     logger.info(
-        f"Unregistered knowledge base '{kb.slug}'. Its data at {kb.dsn_preview} "
-        f"was left untouched."
+        f"Unregistered knowledge base '{kb.slug}'. Its tables "
+        f"({kb.table_prefix}_documents, {kb.table_prefix}_chunks) at "
+        f"{kb.dsn_preview} were left untouched."
     )
 
 
@@ -545,6 +527,7 @@ async def ensure_default_kb(db: AsyncSession) -> KnowledgeBase:
     if kb is None:
         kb = KnowledgeBase(
             slug=DEFAULT_SLUG,
+            table_prefix=table_prefix_for(DEFAULT_SLUG),
             name="Primary knowledge base",
             description="The knowledge base configured in the server's environment.",
             dsn_encrypted=None,  # read from DATABASE_URL, never stored
@@ -563,6 +546,7 @@ async def ensure_default_kb(db: AsyncSession) -> KnowledgeBase:
         return kb
 
     # Keep the row in step with the environment it mirrors.
+    kb.table_prefix = kb.table_prefix or table_prefix_for(DEFAULT_SLUG)
     kb.dsn_encrypted = None
     kb.dsn_preview = dsn_preview(settings.database_url)
     kb.embedding_provider = settings.embedding_provider.lower()
@@ -614,3 +598,34 @@ def available_models() -> list[dict]:
         }
         for model, spec in sorted(MODEL_SPECS.items())
     ]
+
+
+async def normalise_stored_dsns(db: AsyncSession) -> int:
+    """
+    Rewrite stored connection strings that still carry a `?schema=`.
+
+    resolve_dsn already strips it, so this is not what keeps things working —
+    it is what stops the saved value and the preview from describing a layout
+    that no longer exists.
+    """
+    fixed = 0
+    for kb in await list_kbs(db):
+        if kb.dsn_encrypted is None:
+            continue
+        try:
+            stored = crypto_service.decrypt(kb.dsn_encrypted)
+        except crypto_service.SecretsUnavailable:
+            continue
+
+        cleaned = strip_schema_parameter(stored)
+        if cleaned == stored:
+            continue
+
+        kb.dsn_encrypted = crypto_service.encrypt(cleaned)
+        kb.dsn_preview = dsn_preview(cleaned)
+        fixed += 1
+        logger.info(
+            f"Knowledge base '{kb.slug}': dropped the schema parameter from its "
+            f"stored connection string."
+        )
+    return fixed

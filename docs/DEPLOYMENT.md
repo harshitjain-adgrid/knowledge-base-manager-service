@@ -220,6 +220,8 @@ serves `frontend/dist` from there.
 - [ ] `pg_dump` scheduled — `knowledge_chunks` holds vectors that cost API calls to regenerate
 - [ ] `SECRET_KEY` backed up somewhere other than the database it protects — losing
       it makes every stored knowledge-base connection string unreadable
+- [ ] One `pg_dump` covers everything: all knowledge bases live in one schema,
+      with a table pair each (`kb_<slug>_documents`, `kb_<slug>_chunks`)
 - [ ] Any additional knowledge base's host is reachable **from this server**, not
       only from a laptop. If it is behind SSH, run the tunnel here (autossh under
       systemd) and point the connection string at the local end

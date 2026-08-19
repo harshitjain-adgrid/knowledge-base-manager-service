@@ -187,6 +187,7 @@ vectors written by one model are meaningless to another.
       "slug": "default",
       "name": "Primary knowledge base",
       "description": "The knowledge base configured in the server's environment.",
+      "table_prefix": "kb_default",
       "dsn_preview": "qa@localhost:5434/vector_qa",
       "embedding_provider": "gemini",
       "embedding_model": "gemini-embedding-2",
@@ -210,6 +211,11 @@ vectors written by one model are meaningless to another.
 `dsn_preview` is `user@host:port/database` — **the password is never part of any
 response.** `from_environment: true` marks the knowledge base whose connection
 string comes from `DATABASE_URL` rather than from a stored row.
+
+`table_prefix` names this knowledge base's tables — `kb_default_documents` and
+`kb_default_chunks`. Every knowledge base has its own pair in one schema, so a
+consumer reading the database directly routes on a table name rather than a
+filter. Two knowledge bases can share a database; they cannot share a prefix.
 
 ### `GET /api/v1/embedding-models`
 
@@ -322,7 +328,7 @@ Content-Type: application/json
 | `dsn` | yes | Stored encrypted, never returned |
 | `embedding_model` | yes | One of `GET /embedding-models` |
 | `embedding_dimensions` | yes | Must be in that model's `allowed_dimensions` |
-| `slug` | no | Derived from the name — `Merchant Ops` → `merchant-ops` |
+| `slug` | no | Derived from the name — `Merchant Ops` → `merchant-ops`. Also names its tables: `kb_merchant_ops_documents` and `kb_merchant_ops_chunks` |
 | `description` | no | |
 | `chunk_size` | no | Defaults to the server's `CHUNK_SIZE` |
 | `chunk_overlap` | no | Defaults to the server's `CHUNK_OVERLAP` |
@@ -331,13 +337,10 @@ The order of work is validate → connect → create the tables → write the ro
 knowledge base that appears in the list has been proven to work; if anything
 fails, nothing is registered.
 
-**Adding a schema.** Most Postgres users can create a schema but not a database.
-Append `?schema=` to the connection string and the knowledge base gets its own
-tables inside a shared database:
-
-```
-postgresql://kb_user:secret@10.0.0.7:5432/shared?schema=merchant_ops
-```
+**Sharing a database is fine.** A knowledge base gets its own tables, named
+after its identifier, so several can live in one schema without touching each
+other — including this service's own database. No `CREATE DATABASE` privilege
+needed, and no schema of its own.
 
 **Things that are refused, and why** — all `400`:
 
@@ -347,8 +350,8 @@ postgresql://kb_user:secret@10.0.0.7:5432/shared?schema=merchant_ops
 | `'gemini-embedding-2' is a gemini model, but the provider given was 'fal'.` | Mismatched pair |
 | `999 dimensions is not supported by 'gemini-embedding-2'. Supported: 768, 1536, 3072.` | Width the model cannot produce |
 | `'openai/text-embedding-3-large' needs a fal API key, and FAL_KEY is not set…` | Provider has no key on this server |
-| `This database is already in use by the knowledge base 'default'…` | Two knowledge bases would share tables |
-| `This database already stores 25 3072-dimension vectors, but this knowledge base is configured for 768…` | Existing vectors the chosen model cannot read |
+| `'x' would use the same tables as 'y'…` | Two identifiers shortened to the same table prefix |
+| `kb_x_chunks already holds 25 3072-dimension vectors, but this knowledge base is configured for 768…` | Existing vectors the chosen model cannot read |
 | `SECRET_KEY is not set on the server, so a connection string cannot be stored safely…` | Add one to `.env` and restart |
 
 ### `GET /api/v1/knowledge-bases/{slug}`
@@ -400,13 +403,13 @@ stale `last_error` after a host comes back.
 ```json
 {
   "message": "'merchant-ops' was removed from the registry.",
-  "detail": "Its documents and vectors at kb_user@10.0.0.7:5432/merchant_ops were left untouched."
+  "detail": "Its tables (kb_merchant_ops_documents, kb_merchant_ops_chunks) at kb_user@10.0.0.7:5432/merchant_ops were left untouched."
 }
 ```
 
 **This never drops tables.** Unregistering is reversible; deleting data is not,
-and the database belongs to whoever set it up. The ownership marker inside it is
-released, so the same database can be registered again later.
+and the database belongs to whoever set it up. Re-registering under the same
+identifier finds the same tables and picks up where it left off.
 
 The default knowledge base cannot be removed — **400**, `"Make another one the
 default first."`

@@ -317,16 +317,16 @@ and fixed from then on:
   and only ever come back as `user@host:port/database` with the password removed.
 - **API keys are not per knowledge base.** They stay in the environment, one per
   provider, and are shared by every knowledge base using that provider.
-- **No database can serve two knowledge bases.** Each one writes an ownership
-  marker into the database it uses, so the clash is caught even when the same
-  host is spelled two different ways.
+- **One schema, one table pair per knowledge base** — `kb_default_documents`,
+  `kb_api_catalog_chunks`, and so on. Sharing a database is fine; sharing a
+  table prefix is not, and the registry's unique constraint enforces it.
 - **Removing one never drops its tables.** Unregistering is reversible; deleting
   data is not.
 
-If the Postgres user cannot create databases — which is the common case — give the
-knowledge base its own schema instead by appending `?schema=name` to the
-connection string. The tables land there, and two knowledge bases on one database
-cannot see each other's.
+No `CREATE DATABASE` privilege is needed. A knowledge base gets its own tables
+named after its identifier, so several can share one database and one schema
+without touching each other — including this service's own database, which is
+where the two seeded ones live.
 
 The host has to be reachable **from the server**, not from your laptop. For a
 database behind SSH, run the tunnel on the server and point the connection string
@@ -351,6 +351,19 @@ different value — chunk size above all, since a tool card that splits returns
 half a tool. Separation also means the catalogue can be rebuilt when the backend
 ships without touching product knowledge.
 
+**One schema, one pair of tables per knowledge base.** The registry names them:
+
+```
+public.kb_default_documents      public.kb_api_catalog_documents
+public.kb_default_chunks         public.kb_api_catalog_chunks
+```
+
+Separate tables rather than a shared table with a `kb_id` column, because the
+embedding width lives on the column — a shared table has one
+`embedding vector(N)` and would pin every knowledge base to the same model
+forever. It also means a consumer reading the database directly routes on a
+table name, with no `WHERE` clause to forget.
+
 ### What this service does not do
 
 **It never calls the APIs in the catalogue.** The only outbound requests it makes
@@ -372,7 +385,7 @@ The format the backend team fills in:
 and 41 API cards across 10 domains — plus labelled evaluation sets.
 
 ```bash
-python seeds/load_seeds.py --base http://127.0.0.1:8000   --dsn 'postgresql://user:pass@host:5432/db?schema=api_catalog'
+python seeds/load_seeds.py --base http://127.0.0.1:8000   --dsn 'postgresql://user:pass@host:5432/vector_qa'
 
 python seeds/eval/run_eval.py --base http://127.0.0.1:8000
 python seeds/eval/run_eval.py --base http://127.0.0.1:8000 --sweep
