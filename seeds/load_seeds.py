@@ -253,6 +253,10 @@ def main() -> None:
     parser.add_argument("--base", default="http://127.0.0.1:8000")
     parser.add_argument("--user", default="admin")
     parser.add_argument("--password", default=os.environ.get("CHOTU_PASSWORD"))
+    parser.add_argument("--token", default=os.environ.get("ADMIN_API_KEY"),
+                        help="Machine key to use instead of signing in. This is "
+                             "what ADMIN_API_KEY is for, and it keeps a password "
+                             "out of scripts and CI.")
     parser.add_argument("--dsn", default=os.environ.get("CHOTU_API_KB_DSN"),
                         help="Connection string for the API catalogue knowledge "
                              "base. Only needed the first time. The same database "
@@ -265,10 +269,15 @@ def main() -> None:
                              "folder is the whole truth for that knowledge base.")
     args = parser.parse_args()
 
-    password = args.password or getpass.getpass(f"Password for {args.user}: ")
-    client = Client(args.base, sign_in(args.base, args.user, password))
+    if args.token:
+        client = Client(args.base, args.token)
+    else:
+        password = args.password or getpass.getpass(f"Password for {args.user}: ")
+        client = Client(args.base, sign_in(args.base, args.user, password))
 
     status, health = client.get("/api/v1/auth/me")
+    if status != 200:
+        sys.exit(f"Could not authenticate: {status} {health}")
     print(f"signed in as {health.get('username')} at {args.base}")
 
     if args.only != "product":
