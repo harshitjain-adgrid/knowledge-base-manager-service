@@ -1,61 +1,97 @@
 # Product-knowledge retrieval evaluation set.
 #
-# Each query names the document that should answer it. Retrieval returns chunks,
-# so a query passes when a chunk from the expected document appears in the top k
-# — the assistant only needs the right passage in context, not the whole file.
+# Targets the real content in content/product-knowledge/ — 28 documents across
+# 10 domains. Each query names the document that should answer it. Retrieval
+# returns chunks, so a query passes when a chunk from the expected document
+# appears in the top k: the assistant only needs the right passage in context,
+# not the whole file.
 #
-# As with the action set, these are paraphrases. None repeats a heading from the
-# document it targets.
+# None of these repeats a heading or a "Frequently asked as" line from the
+# document it targets. Reusing those would measure string overlap rather than
+# retrieval, and every document would pass regardless of how it was written.
 #
 # tiers:
-#   easy      — the document's own subject, plainly asked
+#   easy      — the subject of the document, asked in the words a merchant uses
 #   medium    — asked sideways, or in Hindi/Hinglish
-#   confusable— close to a neighbouring document; the neighbour is named
+#   confusable— close to a neighbouring document. `not_expect` names the
+#               neighbour; retrieving it above the right one fails the case.
 #   negative  — nothing in the knowledge base covers it. The right outcome is a
 #               low top score, so the assistant says it does not know.
 
 queries:
 
-# ── easy ────────────────────────────────────────────────────────────────
-- { q: "what can the assistant do for me",                expect: "What Chotu Can Do",              tier: easy }
-- { q: "what do I need before customers can order",       expect: "Setting Up Your Store",          tier: easy }
-- { q: "how do I put something new in my catalogue",      expect: "Adding Products",                tier: easy }
-- { q: "what happens when something runs out",            expect: "Managing Stock",                 tier: easy }
-- { q: "can I change a price while a sale is running",    expect: "Pricing and Units",              tier: easy }
-- { q: "difference between a coupon and a normal discount", expect: "Types of Offer",               tier: easy }
-- { q: "can I set up a sale now that starts later",       expect: "Scheduling and Ending Offers",   tier: easy }
-- { q: "my discount didn't come off the customer's bill", expect: "Why an Offer Is Not Applying",   tier: easy }
-- { q: "how do I note down that someone took goods on credit", expect: "Recording Udhaar",          tier: easy }
-- { q: "can I chase customers for money they owe",        expect: "Sending Payment Reminders",      tier: easy }
-- { q: "is there a cap on how much credit I can give",    expect: "Khata Limits and Rules",         tier: easy }
-- { q: "what are the stages an order goes through",       expect: "How an Order Moves",             tier: easy }
-- { q: "how do I stop an order I can't fulfil",           expect: "Cancelling an Order",            tier: easy }
-- { q: "when does the money reach my bank",               expect: "When Your Money Arrives",        tier: easy }
-- { q: "how many days do I have to refund someone",       expect: "Refund Rules",                   tier: easy }
-- { q: "can I collect money without an order",            expect: "Payment Links",                  tier: easy }
-- { q: "how do I mark my shop closed for a festival",     expect: "Shop Timings and Holidays",      tier: easy }
-- { q: "how far should I set my delivery area",           expect: "Delivery Settings",              tier: easy }
-- { q: "what does average order value tell me",           expect: "Reading Your Sales Report",      tier: easy }
+# ── easy: one per document ──────────────────────────────────────────────
+- { q: "why should I put my shop on this platform",            expect: "What LessPay Does for Your Shop",        tier: easy }
+- { q: "which jobs can I hand over instead of doing them myself", expect: "What Chotu Can Do for You",           tier: easy }
+- { q: "what steps come before I can start taking money",      expect: "Setting Up Your Shop",                   tier: easy }
+- { q: "which actions ask me for a secret code",               expect: "Your MPIN and What It Protects",         tier: easy }
+- { q: "I moved to a new market and need to correct my address", expect: "Your Shop Name, Category and Address", tier: easy }
+- { q: "how do I tell people I do home delivery and have parking", expect: "Service Modes, Keywords and Facilities", tier: easy }
+- { q: "how many pictures am I allowed to put up",             expect: "Photos on Your Shop Page",               tier: easy }
+- { q: "should I cut my prices or give something extra away",  expect: "Deals and Discounts — the Difference",   tier: easy }
+- { q: "I want twenty percent off on bills over five hundred", expect: "Creating a Discount",                    tier: easy }
+- { q: "I want to give a free samosa with every tea",          expect: "Creating a Deal",                        tier: easy }
+- { q: "can I stop one person from using the same offer ten times", expect: "Who Gets Your Offer, and How Often", tier: easy }
+- { q: "can I make something that starts next monday instead of today", expect: "Offer Status and Validity",     tier: easy }
+- { q: "I made an offer and nobody can see it",                expect: "Why Your Offer Is Not Showing or Applying", tier: easy }
+- { q: "walk me through what happens when someone pays at my counter", expect: "How You Get Paid",               tier: easy }
+- { q: "I want to check everything that came in over the last month", expect: "Looking at Your Payment History",  tier: easy }
+- { q: "there is money showing in the app but nothing in my account", expect: "When Your Money Reaches Your Bank", tier: easy }
+- { q: "what sits behind the code that customers scan",        expect: "Your UPI QR Code",                       tier: easy }
+- { q: "I want my takings to go to a different account from now on", expect: "Managing More Than One QR Code",   tier: easy }
+- { q: "how do I pay to get in front of more people",          expect: "What Promotions Are",                    tier: easy }
+- { q: "what will it cost to reach two thousand people for a week", expect: "What a Promotion Costs",            tier: easy }
+- { q: "take me through booking an advertisement step by step", expect: "Running a Promotion Campaign",          tier: easy }
+- { q: "what is the balance inside the app actually for",      expect: "Credits and Your Wallet",                tier: easy }
+- { q: "is there a deadline on the balance I was given free",  expect: "When Credits Expire",                    tier: easy }
+- { q: "what paid plans can I sign up for",                    expect: "Packages and Programs",                  tier: easy }
+- { q: "why is there an extra amount on top of the plan price", expect: "What You Pay for a Package",            tier: easy }
+- { q: "I told another shopkeeper about this, do I get anything", expect: "Referring Other Shops",               tier: easy }
+- { q: "what makes somebody nearby end up walking into my shop", expect: "How Customers Find Your Shop",         tier: easy }
+- { q: "what does my page look like from the shopper side",    expect: "What Customers See About Your Shop",     tier: easy }
 
-# ── medium ──────────────────────────────────────────────────────────────
-- { q: "udhaar ka record kaise rakhun",                   expect: "Recording Udhaar",               tier: medium }
-- { q: "paise bank mein kitne din mein aate hain",        expect: "When Your Money Arrives",        tier: medium }
-- { q: "why did two discounts not both apply",            expect: "Types of Offer",                 tier: medium }
-- { q: "an order vanished without me touching it",        expect: "How an Order Moves",             tier: medium }
-- { q: "is it better to offer free delivery or money off", expect: "Delivery Settings",             tier: medium }
-- { q: "I made a mistake in my ledger, can I edit it",    expect: "Recording Udhaar",               tier: medium }
-- { q: "why is my payout smaller than my sales figure",   expect: "Reading Your Sales Report",      tier: medium }
-- { q: "does cancelling hurt my shop",                    expect: "Cancelling an Order",            tier: medium }
+# ── medium: sideways, or in Hinglish ────────────────────────────────────
+- { q: "chotu se kaun kaun se kaam karwa sakte hain",          expect: "What Chotu Can Do for You",              tier: medium }
+- { q: "pin kis kis cheez ke liye maangta hai",                expect: "Your MPIN and What It Protects",         tier: medium }
+- { q: "dukaan ka pata galat chadh gaya hai theek karna hai",  expect: "Your Shop Name, Category and Address",   tier: medium }
+- { q: "menu ki photo kitni lag sakti hai",                    expect: "Photos on Your Shop Page",               tier: medium }
+- { q: "deal aur discount mein kya farak hai",                 expect: "Deals and Discounts — the Difference",   tier: medium }
+- { q: "ek grahak kitni baar wahi offer utha sakta hai",       expect: "Who Gets Your Offer, and How Often",     tier: medium }
+- { q: "aaj ka total kaise nikalein",                          expect: "Looking at Your Payment History",        tier: medium }
+- { q: "bank mein transfer kis time hota hai",                 expect: "When Your Money Reaches Your Bank",      tier: medium }
+- { q: "purana qr hatana hai naya chalu karna hai",            expect: "Managing More Than One QR Code",         tier: medium }
+- { q: "vigyapan ka rate kya lagta hai",                       expect: "What a Promotion Costs",                 tier: medium }
+- { q: "wallet mein do alag alag balance kyun dikh rahe hain", expect: "Credits and Your Wallet",                tier: medium }
+- { q: "muft mila hua paisa khatam ho jayega kya",             expect: "When Credits Expire",                    tier: medium }
+- { q: "jama rakhi hui rakam wapas milti hai kya",             expect: "What You Pay for a Package",             tier: medium }
+- { q: "dost ko jodne par kya faayda hai",                     expect: "Referring Other Shops",                  tier: medium }
+- { q: "grahak app par meri dukaan tak kaise pahunchega",      expect: "How Customers Find Your Shop",           tier: medium }
+- { q: "what do I have to finish before my shop goes live",    expect: "Setting Up Your Shop",                   tier: medium }
+- { q: "I sell chaat but people searching for snacks never find me", expect: "Service Modes, Keywords and Facilities", tier: medium }
 
-# ── confusable ──────────────────────────────────────────────────────────
-- { q: "how do I mark something as sold out",         expect: "Managing Stock",              not_expect: "Adding Products",           tier: confusable }
-- { q: "what should I fill in when listing an item",  expect: "Adding Products",             not_expect: "Managing Stock",            tier: confusable }
-- { q: "a refund on an order I already cancelled",    expect: "Refund Rules",                not_expect: "Cancelling an Order",       tier: confusable }
-- { q: "my sale is live but nobody is getting it",    expect: "Why an Offer Is Not Applying", not_expect: "Types of Offer",           tier: confusable }
-- { q: "how much can one customer owe me",            expect: "Khata Limits and Rules",      not_expect: "Recording Udhaar",          tier: confusable }
+# ── confusable: the neighbour is named ──────────────────────────────────
+- { q: "buy one get one free, how do I set that up",           expect: "Creating a Deal",                        not_expect: "Creating a Discount",              tier: confusable }
+- { q: "flat fifty rupees off, how do I set that up",          expect: "Creating a Discount",                    not_expect: "Creating a Deal",                  tier: confusable }
+- { q: "I want to pay so more people see the discount I just made", expect: "Running a Promotion Campaign",      not_expect: "Creating a Discount",              tier: confusable }
+- { q: "difference between giving money off and paying for reach", expect: "What Promotions Are",                not_expect: "Deals and Discounts — the Difference", tier: confusable }
+- { q: "how many different people in total can claim it before it stops", expect: "Who Gets Your Offer, and How Often", not_expect: "Offer Status and Validity",  tier: confusable }
+- { q: "it says active but customers tell me it is not there", expect: "Why Your Offer Is Not Showing or Applying", not_expect: "Offer Status and Validity",     tier: confusable }
+- { q: "a customer paid me but I cannot find it in the list",  expect: "How You Get Paid",                       not_expect: "When Your Money Reaches Your Bank", tier: confusable }
+- { q: "the app says success but the bank has not credited me", expect: "When Your Money Reaches Your Bank",     not_expect: "How You Get Paid",                 tier: confusable }
+- { q: "it will not let me remove the code I am using",        expect: "Managing More Than One QR Code",         not_expect: "Your UPI QR Code",                 tier: confusable }
+- { q: "does the money I topped up myself ever lapse",         expect: "When Credits Expire",                    not_expect: "Credits and Your Wallet",          tier: confusable }
+- { q: "which part of my balance can pay for a whatsapp blast", expect: "Credits and Your Wallet",               not_expect: "When Credits Expire",              tier: confusable }
+- { q: "is tax added on top of what I pay to advertise",       expect: "What a Promotion Costs",                 not_expect: "What You Pay for a Package",       tier: confusable }
+- { q: "is tax added on top of my subscription fee",           expect: "What You Pay for a Package",             not_expect: "What a Promotion Costs",           tier: confusable }
+- { q: "a shopper says the deal did not come off their bill",  expect: "What Customers See About Your Shop",     not_expect: "Creating a Deal",                  tier: confusable }
 
-# ── negative ────────────────────────────────────────────────────────────
-- { q: "how do I file my GST return",                     expect: null, tier: negative }
-- { q: "can I hire staff through this app",               expect: null, tier: negative }
-- { q: "what is the interest rate on a business loan",    expect: null, tier: negative }
-- { q: "how do I get a food licence",                     expect: null, tier: negative }
+# ── negative: nothing here covers it ────────────────────────────────────
+- { q: "how do I write down that a customer took goods on credit", tier: negative }
+- { q: "can I print a gst invoice for a customer",             tier: negative }
+- { q: "how do I add my son as a staff user on my account",    tier: negative }
+- { q: "am I eligible for a business loan through this",       tier: negative }
+- { q: "how do I export my sales into tally",                  tier: negative }
+- { q: "can I ship my products to customers in another state", tier: negative }
+- { q: "how do I change the app language to tamil",            tier: negative }
+- { q: "can I accept card payments with a swipe machine",      tier: negative }
+- { q: "what is the weather going to be tomorrow",             tier: negative }

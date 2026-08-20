@@ -1,15 +1,17 @@
 """
-Loads the seed content into the two knowledge bases.
+Loads content into the two knowledge bases.
 
   python seeds/load_seeds.py --base http://127.0.0.1:8000 --user admin
 
 Creates the API catalogue knowledge base if it is missing, then uploads every
-markdown file: product documents into the default knowledge base, API cards into
-the catalogue. Front matter carries the title, type and metadata, so nothing is
-passed on the command line except the folder.
+markdown file: product documents from content/product-knowledge into the default
+knowledge base, API cards from seeds/api-catalog into the catalogue. Front matter
+carries the title, type and metadata, so nothing is passed on the command line
+except the folder.
 
 Idempotent by title within a folder — running it twice replaces rather than
-duplicates.
+duplicates. Pass --purge to also remove documents that are in a knowledge base
+but no longer on disk, so the knowledge base ends up matching the folder exactly.
 """
 
 import argparse
@@ -26,7 +28,11 @@ import urllib.request
 import uuid
 
 HERE = pathlib.Path(__file__).parent
-PRODUCT_DIR = HERE / "product"
+REPO = HERE.parent
+
+# The product knowledge base is real, reviewed content and lives outside seeds/.
+# The API catalogue is still built material, so it stays here.
+PRODUCT_DIR = REPO / "content" / "product-knowledge"
 PRODUCT_KB_SLUG = "product-knowledge"
 API_DIR = HERE / "api-catalog"
 
@@ -168,8 +174,28 @@ def existing_titles(client: Client, kb: str) -> dict:
             return found
 
 
-def load_folder(client: Client, root: pathlib.Path, kb: str, label: str) -> None:
-    files = sorted(root.rglob("*.md"))
+def title_of(path: pathlib.Path) -> str | None:
+    """The title out of a markdown file's front matter, if it has one."""
+    for line in path.read_text(encoding="utf-8").splitlines()[1:20]:
+        if line.lower().startswith("title:"):
+            return line.split(":", 1)[1].strip().strip('"')
+    return None
+
+
+def content_files(root: pathlib.Path) -> list[pathlib.Path]:
+    """Every markdown file in a folder that is content rather than housekeeping.
+
+    A README explains the folder to whoever opens it; uploading it would put
+    authoring instructions into the knowledge base, where they would retrieve
+    against real merchant questions.
+    """
+    return sorted(p for p in root.rglob("*.md")
+                  if p.name.lower() != "readme.md" and not p.name.startswith("_"))
+
+
+def load_folder(client: Client, root: pathlib.Path, kb: str, label: str,
+                purge: bool = False) -> None:
+    files = content_files(root)
     if not files:
         print(f"  nothing to load from {root}")
         return
@@ -186,12 +212,7 @@ def load_folder(client: Client, root: pathlib.Path, kb: str, label: str) -> None
 
         # Read the title out of the front matter so a re-run replaces rather
         # than duplicating. Cheap, and avoids needing an id on disk.
-        text = path.read_text(encoding="utf-8")
-        title = None
-        for line in text.splitlines()[1:20]:
-            if line.lower().startswith("title:"):
-                title = line.split(":", 1)[1].strip().strip('"')
-                break
+        title = title_of(path)
 
         if title and title in known:
             client.delete(f"/api/v1/documents/{known[title]}", kb=kb)
@@ -209,6 +230,23 @@ def load_folder(client: Client, root: pathlib.Path, kb: str, label: str) -> None
     print(f"  {loaded} loaded ({replaced} replaced), {failed} failed, "
           f"{time.time() - started:.0f}s")
 
+    if not purge:
+        return
+
+    # Anything in the knowledge base that no longer has a file behind it is
+    # stale — an earlier version of this folder, or content that was retired.
+    # Only reachable behind --purge, because it deletes work nobody can undo.
+    on_disk = {t for t in (title_of(p) for p in files) if t}
+    stale = {title: doc_id for title, doc_id in known.items() if title not in on_disk}
+    if not stale:
+        print("  nothing stale to remove")
+        return
+
+    print(f"  removing {len(stale)} document(s) with no file behind them:")
+    for title, doc_id in sorted(stale.items()):
+        status, _ = client.delete(f"/api/v1/documents/{doc_id}", kb=kb)
+        print(f"    {'removed' if status in (200, 204) else f'FAILED {status}'}  {title}")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -221,6 +259,10 @@ def main() -> None:
                              "as the service's own is fine.")
     parser.add_argument("--only", choices=["product", "api"],
                         help="Load just one side.")
+    parser.add_argument("--purge", action="store_true",
+                        help="After loading, delete documents in the knowledge "
+                             "base that have no file behind them. Use when a "
+                             "folder is the whole truth for that knowledge base.")
     args = parser.parse_args()
 
     password = args.password or getpass.getpass(f"Password for {args.user}: ")
@@ -233,9 +275,11 @@ def main() -> None:
         ensure_api_kb(client, args.dsn)
 
     if args.only != "api":
-        load_folder(client, PRODUCT_DIR, PRODUCT_KB_SLUG, "Product knowledge")
+        load_folder(client, PRODUCT_DIR, PRODUCT_KB_SLUG, "Product knowledge",
+                    purge=args.purge)
     if args.only != "product":
-        load_folder(client, API_DIR, API_KB_SLUG, "API catalogue")
+        load_folder(client, API_DIR, API_KB_SLUG, "API catalogue",
+                    purge=args.purge)
 
     print("\nTotals")
     for kb in ([PRODUCT_KB_SLUG] if args.only != "api" else []) + \

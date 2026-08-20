@@ -1,16 +1,19 @@
 # Seed content
 
-Two knowledge bases' worth of content, plus the evaluation sets that measure how
-well retrieval works against them.
+The API catalogue, plus the evaluation sets that measure how well retrieval
+works against both knowledge bases.
+
+The product knowledge base is no longer seeded from here. Its content is real
+and reviewed, and lives in [`content/product-knowledge/`](../content/product-knowledge/).
 
 > **Most of this is synthetic — check `status` before calling anything.**
 >
-> `status: example` — the product documents and the eight merchant domains
-> (catalog, offers, khata, orders, payments, customers, store, reports). The
-> paths, fields and error codes are **invented**: plausible, not real. Nothing
-> here should reach a merchant, and nothing should call these paths. They exist
-> so retrieval can be measured before the real content arrives, and so the
-> format the backend team fills in is unambiguous.
+> `status: example` — the eight merchant domains (catalog, offers, khata,
+> orders, payments, customers, store, reports). The paths, fields and error
+> codes are **invented**: plausible, not real. Nothing here should reach a
+> merchant, and nothing should call these paths. They exist so retrieval can be
+> measured before the real cards arrive, and so the format the backend team
+> fills in is unambiguous.
 >
 > `status: live` — the `weather` and `reference` domains. These are real,
 > key-free public APIs (Open-Meteo, sunrise-sunset.org, Frankfurter, CoinGecko,
@@ -29,19 +32,14 @@ well retrieval works against them.
 
 ```
 seeds/
-  product/                     19 documents → the "product-knowledge" knowledge base
-    getting-started/  catalog/  offers/  khata/
-    orders/  payments/  store/  reports/
-
   api-catalog/                 41 API cards → the "api-catalog" knowledge base
     catalog/  offers/  khata/  orders/  payments/
     customers/  store/  reports/       synthetic — cannot be called
     weather/  reference/               real public APIs — can be called
 
   api-catalog-domains.md       what each domain covers
-  build_product_kb.py          regenerates product/
   build_api_catalog.py         regenerates api-catalog/
-  load_seeds.py                uploads both into a running service
+  load_seeds.py                uploads both knowledge bases into a running service
 
   eval/
     product_queries.yaml       41 questions → the document that should answer them
@@ -51,9 +49,13 @@ seeds/
     BASELINE.md                the numbers to measure regressions against
 ```
 
-The two `build_*.py` scripts hold the content as data and emit the markdown.
-Edit the script, re-run it, re-load. The markdown files are what you read and
-what the loader uploads.
+`build_api_catalog.py` holds the cards as data and emits the markdown. Edit the
+script, re-run it, re-load. The markdown files are what you read and what the
+loader uploads.
+
+The product documents are written by hand, not generated — they are real
+content, and `content/product-knowledge/README.md` explains how they are
+organised.
 
 ---
 

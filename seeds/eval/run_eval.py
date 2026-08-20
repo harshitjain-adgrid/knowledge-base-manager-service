@@ -187,6 +187,17 @@ def eval_product(base, token, kb, top_k, min_score):
             if passed and rank and rank > 1:
                 detail = f"{case['q']!r} -> {expected!r} at rank {rank}"
 
+            # A confusable case names the neighbour it is easily mistaken for.
+            # Retrieving both is fine; retrieving the neighbour *first* is not,
+            # because the assistant answers from what it reads first.
+            rival = case.get("not_expect")
+            if rival and rival in titles:
+                rival_rank = titles.index(rival) + 1
+                if rank is None or rival_rank < rank:
+                    passed = False
+                    detail = (f"{case['q']!r} -> {rival!r} at rank {rival_rank} "
+                              f"beat {expected!r} at rank {rank}")
+
         tally.add(case["tier"], passed, detail)
 
     return tally.report(f"PRODUCT KNOWLEDGE  (recall@{top_k})")

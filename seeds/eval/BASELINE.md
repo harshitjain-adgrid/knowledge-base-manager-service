@@ -4,6 +4,17 @@ Measured 19 August 2026 against the 41-card catalogue and 22 product documents.
 `gemini-embedding-2` at 3072 dimensions, `min_score=0.65`,
 `decision_margin=0.02`.
 
+> **The product-knowledge numbers below are superseded and not a baseline.**
+>
+> They measured 22 synthetic documents that have since been replaced by the 28
+> real documents in `content/product-knowledge/`, against a different set of 36
+> queries. `product_queries.yaml` now holds 68 queries written against the real
+> content, and has not been run yet — the database was unreachable when the
+> content landed. Re-run `run_eval.py` and replace the product block before
+> treating any product figure here as something to regress against.
+>
+> The action-selection numbers are unaffected. The API catalogue did not change.
+
 Re-run after any change to the content, the chunking, or the thresholds. A drop
 against these numbers is a regression.
 
@@ -74,12 +85,20 @@ catalogue.** A question today is an instruction as soon as an API can answer it.
 
 ## Reading these numbers
 
-### Product knowledge is solved
+### Product knowledge was solved on the synthetic set
 
 100% across every tier, including negatives — questions nothing in the knowledge
-base covers ("how do I file my GST return") all score below the 0.70 floor, so
-the assistant says it does not know rather than answering from the nearest
+base covers ("how do I file my GST return") all scored below the 0.70 floor, so
+the assistant said it did not know rather than answering from the nearest
 unrelated passage.
+
+Read this as evidence that the *chunking and retrieval* work, not as a claim
+about the content now in place. That set was 36 queries over 22 synthetic
+documents. The real content is 28 documents and 68 queries, and it is harder in
+one specific way: the synthetic documents covered eight well-separated domains,
+while the real ones include pairs a merchant genuinely confuses — offers against
+promotions, wallet against payments. Expect the confusable tier to be the one
+that moves.
 
 ### The negative tier is not a tuning problem
 
@@ -170,9 +189,9 @@ counts as one.
 | | requests |
 |---|---|
 | Full catalogue reload (41 cards) | 293 |
-| Full product reload (19 documents) | ~115 |
+| Full product reload (28 documents) | ~195 |
 | One action evaluation | 81 |
-| One product evaluation | 36 |
+| One product evaluation | 68 |
 | Threshold sweep | 81 |
 
 Reading is cheap — one request per query. **Ingestion is what exhausts the
