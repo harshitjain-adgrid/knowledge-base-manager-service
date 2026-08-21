@@ -26,7 +26,7 @@ copy .env.example .env
 
 Edit `.env` with your actual values:
 - `DATABASE_URL` — Your PostgreSQL connection string (with pgvector extension installed)
-- `GEMINI_API_KEY` — Your Google Gemini API key
+- `FAL_AI_API_KEY` — Your fal.ai API key (`FAL_KEY` is accepted too)
 - `SECRET_KEY` — Only needed if you add a second knowledge base. It encrypts the
   connection strings of the ones you add through the UI, so a database dump does
   not hand over credentials to other hosts. Generate one with:
@@ -67,13 +67,17 @@ cd frontend && npm run dev     # http://localhost:5173
 
 ## Embeddings
 
-The provider is selected with `EMBEDDING_PROVIDER` in `.env`:
+Everything goes through **fal.ai**, which reaches the models over an
+OpenAI-compatible endpoint, so one key and one request shape cover them all.
 
-| Provider | `EMBEDDING_MODEL` | Dims | Input limit | Task handling |
-|----------|-------------------|------|-------------|---------------|
-| `gemini` (default) | `gemini-embedding-2` | 3072 | 8192 tok | Prompt prefixes: `title: … \| text: …` for chunks, `task: search result \| query: …` for searches. Auto-normalises. |
-| `gemini` | `gemini-embedding-001` | 3072 | 2048 tok | `taskType`: `RETRIEVAL_DOCUMENT` for chunks, `RETRIEVAL_QUERY` for searches. |
-| `fal` | `openai/text-embedding-3-large` | 3072 | 8191 tok | None. Note the `openai/` prefix. |
+| `EMBEDDING_MODEL` | Dims | Input limit | Task handling |
+|-------------------|------|-------------|---------------|
+| `gemini-embedding-2` (default) | 3072 | 8192 tok | Prompt prefixes: `title: … \| text: …` for chunks, `task: search result \| query: …` for searches. Auto-normalises. |
+| `gemini-embedding-001` | 3072 | 2048 tok | None. Its `taskType` parameter has nowhere to go in an OpenAI-shaped request, so it embeds untasked and retrieves slightly worse. A fallback, not a recommendation. |
+
+OpenRouter also lists `openai/text-embedding-3-large` and `-small` at this
+endpoint. Both return 401 unless the account can reach OpenAI through
+OpenRouter, so they are deliberately not offered.
 
 Models differ in how the task is signalled, and getting it wrong degrades retrieval
 *silently* — `gemini-embedding-2` accepts a `taskType` parameter and ignores it,

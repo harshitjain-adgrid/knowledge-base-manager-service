@@ -67,8 +67,8 @@ DATABASE_URL=postgresql+asyncpg://qa:<password>@localhost:5434/vector_qa
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 SECRET_KEY=<generated>
 
-EMBEDDING_PROVIDER=gemini
-GEMINI_API_KEY=<a fresh key, not the development one>
+EMBEDDING_PROVIDER=fal
+FAL_AI_API_KEY=<a fresh key, not the development one>
 EMBEDDING_MODEL=gemini-embedding-2
 EMBEDDING_DIMENSIONS=3072
 MAX_EMBEDDING_BATCH_SIZE=20
@@ -209,7 +209,7 @@ serves `frontend/dist` from there.
 ## Pre-deploy checklist
 
 - [ ] `.env` is **not** committed (it is in `.gitignore`; confirm before the first push)
-- [ ] Production `GEMINI_API_KEY` is a fresh key, not the development one
+- [ ] Production `FAL_AI_API_KEY` is a fresh key, not the development one
 - [ ] `ENVIRONMENT=production`
 - [ ] `DATABASE_URL` points at `localhost` on the host, not the tunnel
 - [ ] At least one admin user created

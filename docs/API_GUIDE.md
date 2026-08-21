@@ -189,7 +189,7 @@ vectors written by one model are meaningless to another.
       "description": "The knowledge base configured in the server's environment.",
       "table_prefix": "kb_product_knowledge",
       "dsn_preview": "qa@localhost:5434/vector_qa",
-      "embedding_provider": "gemini",
+      "embedding_provider": "fal",
       "embedding_model": "gemini-embedding-2",
       "embedding_dimensions": 3072,
       "chunk_size": 1200,
@@ -226,7 +226,7 @@ What the model dropdown offers, and the constraints that go with each choice.
   "models": [
     {
       "model": "gemini-embedding-2",
-      "provider": "gemini",
+      "provider": "fal",
       "allowed_dimensions": [768, 1536, 3072],
       "default_dimensions": 3072,
       "input_token_limit": 8192,
@@ -234,21 +234,31 @@ What the model dropdown offers, and the constraints that go with each choice.
       "key_configured": true
     },
     {
-      "model": "openai/text-embedding-3-large",
+      "model": "gemini-embedding-001",
       "provider": "fal",
-      "allowed_dimensions": [256, 1024, 1536, 3072],
+      "allowed_dimensions": [768, 1536, 3072],
       "default_dimensions": 3072,
-      "input_token_limit": 8191,
+      "input_token_limit": 2048,
       "multimodal": false,
-      "key_configured": false
+      "key_configured": true
     }
   ]
 }
 ```
 
-`key_configured: false` means that provider's API key is not set on this server,
-so the model cannot be used. Keys live in the environment, one per provider —
-they are never stored per knowledge base.
+`key_configured: false` means the provider's API key is not set on this server,
+so the model cannot be used. Keys live in the environment — they are never stored
+per knowledge base.
+
+Every model is reached through fal. Only models verified to answer on our account
+are listed: offering one that fails at the first upload is worse than not
+offering it. `openai/text-embedding-3-large` and `-small` are reachable at the
+same endpoint in principle, but return 401 without an OpenAI account behind the
+OpenRouter key, so they are absent.
+
+Prefer `gemini-embedding-2`. `gemini-embedding-001` normally takes its task from
+a `taskType` parameter, which an OpenAI-shaped request has nowhere to put, so it
+embeds untasked and retrieves slightly worse on the same content.
 
 ### `POST /api/v1/knowledge-bases/test-connection`
 
@@ -298,7 +308,7 @@ Content-Type: application/json
 {
   "name": "Merchant Ops",
   "description": "Support runbooks for the ops team",
-  "embedding_provider": "gemini",
+  "embedding_provider": "fal",
   "embedding_model": "gemini-embedding-2",
   "embedding_dimensions": 3072
 }
@@ -318,7 +328,7 @@ Content-Type: application/json
   "name": "Merchant Ops",
   "description": "Support runbooks for the ops team",
   "dsn": "postgresql://kb_user:secret@10.0.0.7:5432/merchant_ops",
-  "embedding_provider": "gemini",
+  "embedding_provider": "fal",
   "embedding_model": "gemini-embedding-2",
   "embedding_dimensions": 3072
 }
@@ -331,7 +341,7 @@ Content-Type: application/json
   "name": "Merchant Ops",
   "description": "Support runbooks for the ops team",
   "dsn_preview": "kb_user@10.0.0.7:5432/merchant_ops",
-  "embedding_provider": "gemini",
+  "embedding_provider": "fal",
   "embedding_model": "gemini-embedding-2",
   "embedding_dimensions": 3072,
   "chunk_size": 1200,
@@ -804,7 +814,7 @@ by the client, which keeps expanding and filtering instant.
       "created_at": "2026-08-18T10:49:48.027762Z"
     }
   ],
-  "embedding_provider": "gemini",
+  "embedding_provider": "fal",
   "embedding_model": "gemini-embedding-2",
   "configured_dimensions": 3072,
   "stored_dimensions": 3072,
@@ -848,7 +858,7 @@ What the upload endpoint accepts, so a client never has to hardcode it.
 ```json
 {
   "knowledge_base": "product-knowledge",
-  "provider": "gemini",
+  "provider": "fal",
   "model": "gemini-embedding-2",
   "dimensions": 3072,
   "batch_size": 20,
@@ -962,7 +972,7 @@ curl -sS "${AUTH[@]}" -X POST "$BASE/api/v1/knowledge-bases" \
   -d '{
         "name": "Merchant Ops",
         "dsn": "postgresql://kb_user:secret@10.0.0.7:5432/merchant_ops",
-        "embedding_provider": "gemini",
+        "embedding_provider": "fal",
         "embedding_model": "gemini-embedding-2",
         "embedding_dimensions": 3072
       }' | jq .

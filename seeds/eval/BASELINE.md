@@ -4,6 +4,33 @@ Measured 20 August 2026 against the 41-card catalogue and the 28 real product
 documents in `content/product-knowledge/`. `gemini-embedding-2` at 3072
 dimensions, `min_score=0.65`, `decision_margin=0.02`.
 
+Re-measured 21 August 2026 after moving from Google's API to fal.ai, **same
+model, same numbers — 67/68 and 68/81, tier for tier, failure for failure.**
+
+### Why the provider change needed no re-embedding
+
+fal reaches `gemini-embedding-2` through OpenRouter's OpenAI-compatible
+endpoint. Embedding identical text through both paths and comparing gave
+**cosine 1.000000** — on the query form, on the document form, and on a second
+query. Same model, same vectors, so all 488 stored vectors stayed valid.
+
+That was worth measuring rather than assuming, in both directions. Re-embedding
+488 chunks because the vendor changed would have been wasted work; *not*
+re-embedding when the vectors had shifted would have been silent corruption —
+search would return plausible nonsense rather than fail. A wrong model measures
+about 0.006 cosine against the right one, which is the failure this check rules
+out.
+
+Two things did change, neither affecting the numbers:
+
+- **The request now carries `dimensions`.** The Google path never sent it. It is
+  honoured (3072 and 1536 both verified), and the identical scores confirm it
+  does not perturb the 3072 case.
+- **`openai/text-embedding-3-large` and `-small` are no longer offered.** Both
+  return 401 — reaching OpenAI through OpenRouter needs an OpenAI account this
+  one does not have. They were in the model dropdown and would have failed at
+  first ingest.
+
 Re-run after any change to the content, the chunking, or the thresholds. A drop
 against these numbers is a regression.
 
@@ -213,35 +240,32 @@ Kept for legibility. Recorded as no measured improvement, not as one.
 
 ## Cost of a run
 
-The Gemini free tier allows **1,000 embed requests per day**, and each text
-counts as one.
+fal bills per token rather than per request, so there is no daily ceiling to
+plan around any more — only a bill. Measured at roughly **$0.0000002 per
+token**, from `cost` on the responses.
 
-| | requests |
-|---|---|
-| Full catalogue reload (41 cards) | 293 |
-| Full product reload (28 documents) | 195 |
-| One action evaluation | 81 |
-| One product evaluation | 68 |
-| Threshold sweep | 81 |
+| | texts | approx tokens |
+|---|---|---|
+| Full catalogue reload (41 cards) | 293 | ~35,000 |
+| Full product reload (28 documents) | 195 | ~20,000 |
+| One action evaluation | 81 | ~1,200 |
+| One product evaluation | 68 | ~800 |
+| Threshold sweep | 81 | ~1,200 |
 
-Reading is cheap — one request per query. **Ingestion is what exhausts the
-quota**, and a day of iterating on content will hit the ceiling. Rotate the key
-in Settings, or move off the free tier before doing bulk reloads.
+Every figure here is fractions of a cent. Reloading both knowledge bases and
+running the full evaluation costs well under a cent, so iterating on content is
+no longer rationed — which is the main practical gain from the move.
 
-### The quota is per Google project, not per key
+### What the free tier used to cost us, kept as a warning
 
-The limit that bites is `EmbedContentRequestsPerDayPerProjectPerModel-FreeTier`.
-Two things follow, both learned the hard way during the 20 August load:
+Before 21 August this ran on Gemini's free tier, capped at **1,000 embed
+requests per day**, one per text. Two things about it cost real time and are
+worth remembering if anything is ever moved back onto a free tier:
 
-- **A fresh key from the same project inherits the exhausted quota.** Rotating
-  only helps if the new key belongs to a different project. Anything else in
-  that project using `gemini-embedding-2` also draws down the same 1,000.
-- **A 429 on a daily quota still returns a `retryDelay` of ~50s.** That reads
-  like a per-minute limit and it is not — the service will back off five times,
-  burn four minutes per document, and still fail. When a load stalls, read
-  `quotaId` from the error body before assuming it will clear on its own.
-
-Swapping to a key in a different project mid-load is safe for the vectors.
-The action evaluation was re-run afterwards against catalogue chunks embedded
-under the old key, queried under the new one, and scored **68/81 — identical
-tier for tier**. The model determines the vector space; the key does not.
+- **The quota was per Google *project*, not per key.** A fresh key from the same
+  project inherited the exhausted quota, so rotating only helped when the new
+  key belonged to a different project.
+- **A 429 on a daily quota still returned a `retryDelay` of ~50s**, which reads
+  exactly like a per-minute limit. The service backed off five times, burned
+  four minutes per document, and failed anyway. When a load stalls, read
+  `quotaId` from the error body before assuming it will clear.
