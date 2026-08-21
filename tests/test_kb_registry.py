@@ -157,16 +157,15 @@ def test_a_derived_slug_always_satisfies_the_pattern_the_api_enforces():
 # ── Model validation ─────────────────────────────────────────────────────────
 
 def test_a_known_model_at_a_supported_width_is_accepted():
-    kb_service.validate_model_choice("gemini", "gemini-embedding-2", 3072)
+    kb_service.validate_model_choice("fal", "gemini-embedding-2", 3072)
 
 
 @pytest.mark.parametrize(
     "provider, model, dimensions, expected",
     [
-        ("gemini", "no-such-model", 3072, "not a known embedding model"),
-        ("fal", "gemini-embedding-2", 3072, "is a gemini model"),
-        ("gemini", "gemini-embedding-2", 999, "not supported"),
-        ("gemini", "gemini-embedding-2", 4096, "not supported"),
+        ("fal", "no-such-model", 3072, "not a known embedding model"),
+        ("fal", "gemini-embedding-2", 999, "not supported"),
+        ("fal", "gemini-embedding-2", 4096, "not supported"),
     ],
 )
 def test_an_impossible_combination_is_refused(provider, model, dimensions, expected):
@@ -175,12 +174,25 @@ def test_an_impossible_combination_is_refused(provider, model, dimensions, expec
     assert expected in str(error.value)
 
 
-def test_a_provider_without_a_configured_key_is_refused():
-    # Keys live in the environment, one per provider. Offering a model whose
-    # provider has no key would fail at the first upload instead of at the form.
+@pytest.mark.parametrize("model", ["openai/text-embedding-3-large",
+                                   "openai/text-embedding-3-small"])
+def test_models_this_account_cannot_reach_are_not_offered(model):
+    # OpenRouter lists these at the same endpoint, but they 401 with "You do not
+    # have access to the organization tied to the API key" — reaching OpenAI
+    # through it needs an OpenAI account we do not have. Offering one would fail
+    # at the first upload instead of at the form.
+    assert model not in kb_service.MODEL_SPECS
+    with pytest.raises(KbError):
+        kb_service.validate_model_choice("fal", model, 3072)
+
+
+def test_a_missing_key_is_refused_before_a_knowledge_base_is_created(monkeypatch):
+    # Keys live in the environment. Accepting a model with no key behind it
+    # would fail at the first upload instead of at the form.
+    monkeypatch.setattr(kb_service.settings, "fal_key", "")
     with pytest.raises(KbError) as error:
-        kb_service.validate_model_choice("fal", "openai/text-embedding-3-large", 3072)
-    assert "FAL_KEY" in str(error.value)
+        kb_service.validate_model_choice("fal", "gemini-embedding-2", 3072)
+    assert "FAL_AI_API_KEY" in str(error.value)
 
 
 def test_every_offered_model_reports_the_widths_it_accepts():

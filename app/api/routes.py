@@ -513,7 +513,7 @@ async def get_embedding_settings(context: KbContext = Depends(resolve_kb)):
     # Model and dimensions belong to the knowledge base being viewed; the API
     # key belongs to the provider and is shared by every knowledge base using it.
     provider = context.profile.embedding.normalised_provider
-    key = settings.gemini_api_key if provider == "gemini" else settings.fal_key
+    key = settings.fal_key
     return EmbeddingSettingsResponse(
         knowledge_base=context.slug,
         provider=provider,
@@ -557,8 +557,7 @@ async def update_api_key(
 
     persisted = False
     if payload.persist:
-        env_name = "GEMINI_API_KEY" if provider == "gemini" else "FAL_KEY"
-        persisted = update_env_var(env_name, api_key)
+        persisted = update_env_var("FAL_AI_API_KEY", api_key)
         if not persisted:
             message += " It is active now, but could not be written to .env, so it will be lost on restart."
 

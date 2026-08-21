@@ -15,9 +15,9 @@ settings = get_settings()
 MAX_RETRIES = 5
 RETRY_BASE_DELAY = 1.0  # seconds
 
-# Provider endpoints
+# Provider endpoint. fal proxies OpenRouter, which speaks the OpenAI embeddings
+# API, so one URL serves every model in the catalogue below.
 FAL_EMBEDDINGS_URL = "https://fal.run/openrouter/router/openai/v1/embeddings"
-GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 # Roles a piece of text can play in retrieval. Each model expresses these
 # differently — see MODEL_SPECS below.
@@ -27,28 +27,28 @@ ROLE_QUERY = "query"
 # ── Embedding model catalogue ───────────────────────────────────────────────
 # `task_style` is the important field:
 #
-#   "task_type"     — gemini-embedding-001 takes a `taskType` request field.
-#   "prompt_prefix" — gemini-embedding-2 does NOT support `taskType`. It
-#                     accepts the field and returns 200, but silently ignores
-#                     it; the task must be expressed as a text prefix instead.
-#                     Verified against the live API.
+#   "prompt_prefix" — the task is expressed as a text prefix, because the model
+#                     has no request field for it. gemini-embedding-2 works this
+#                     way, and it is the only style that survives an
+#                     OpenAI-shaped request unchanged.
+#   "none"          — embedded as-is.
 #
 # `auto_normalize` records whether the model normalises truncated (<3072)
 # outputs itself. gemini-embedding-001 does not — measured norm 0.593 at 768
 # dims — so we always normalise locally, which is a no-op for already-unit
 # vectors and therefore safe for every model here.
+# Every model is reached through fal's OpenAI-compatible endpoint. Only models
+# verified to answer on our account belong here: the dropdown that offers these
+# is a promise that picking one works, and an entry that 401s at ingest time is
+# worse than an entry that is missing.
+#
+# OpenRouter also lists openai/text-embedding-3-large and -small at this
+# endpoint. Both return 401 ("You do not have access to the organization tied to
+# the API key"), because reaching OpenAI through OpenRouter needs an OpenAI
+# account we do not have. They are deliberately absent.
 MODEL_SPECS: dict[str, dict] = {
-    "gemini-embedding-001": {
-        "provider": "gemini",
-        "task_style": "task_type",
-        "max_dimensions": 3072,
-        "allowed_dimensions": [768, 1536, 3072],
-        "input_token_limit": 2048,
-        "auto_normalize": False,
-        "multimodal": False,
-    },
     "gemini-embedding-2": {
-        "provider": "gemini",
+        "provider": "fal",
         "task_style": "prompt_prefix",
         "max_dimensions": 3072,
         "allowed_dimensions": [768, 1536, 3072],
@@ -56,22 +56,17 @@ MODEL_SPECS: dict[str, dict] = {
         "auto_normalize": True,
         "multimodal": True,
     },
-    "openai/text-embedding-3-large": {
+    "gemini-embedding-001": {
         "provider": "fal",
+        # Its task is normally set with a `taskType` parameter, which an
+        # OpenAI-shaped request has nowhere to put. It therefore embeds
+        # untasked, and retrieves slightly worse than gemini-embedding-2 on the
+        # same content. Kept as a fallback, not a recommendation.
         "task_style": "none",
         "max_dimensions": 3072,
-        "allowed_dimensions": [256, 1024, 1536, 3072],
-        "input_token_limit": 8191,
-        "auto_normalize": True,
-        "multimodal": False,
-    },
-    "openai/text-embedding-3-small": {
-        "provider": "fal",
-        "task_style": "none",
-        "max_dimensions": 1536,
-        "allowed_dimensions": [512, 1536],
-        "input_token_limit": 8191,
-        "auto_normalize": True,
+        "allowed_dimensions": [768, 1536, 3072],
+        "input_token_limit": 2048,
+        "auto_normalize": False,
         "multimodal": False,
     },
 }
@@ -182,9 +177,8 @@ class _RollingRateLimiter:
     """
     Simple rolling-window limiter.
 
-    Gemini's free tier counts *each text* in a batchEmbedContents call against
-    the per-minute request quota, so a 100-chunk PDF burns 100 requests. This
-    paces calls so we degrade into waiting rather than into 429s.
+    A large upload turns into a burst of embedding calls. This paces them so we
+    degrade into waiting rather than into 429s.
     """
 
     def __init__(self, max_per_minute: int):
@@ -271,21 +265,7 @@ def _retry_after_seconds(response: httpx.Response) -> float | None:
 def _get_client(provider: str) -> httpx.AsyncClient:
     """Return the HTTP client for a provider, creating it on first use."""
     if provider not in _clients:
-        if provider == "gemini":
-            if not settings.gemini_api_key:
-                raise RuntimeError(
-                    "GEMINI_API_KEY is not set. "
-                    "Please set it in your .env file or environment variables."
-                )
-            _clients[provider] = httpx.AsyncClient(
-                base_url=GEMINI_BASE_URL,
-                headers={
-                    "x-goog-api-key": settings.gemini_api_key,
-                    "Content-Type": "application/json",
-                },
-                timeout=120.0,
-            )
-        elif provider == "fal":
+        if provider == "fal":
             if not settings.fal_key:
                 raise RuntimeError(
                     "FAL_KEY is not set. "
@@ -300,7 +280,7 @@ def _get_client(provider: str) -> httpx.AsyncClient:
             )
         else:
             raise RuntimeError(
-                f"Unknown EMBEDDING_PROVIDER '{provider}'. Use 'gemini' or 'fal'."
+                f"Unknown EMBEDDING_PROVIDER '{provider}'. The only provider is 'fal'."
             )
 
     return _clients[provider]
@@ -364,35 +344,45 @@ async def verify_api_key(
     Returns (ok, message).
     """
     provider = provider.lower()
-    if provider != "gemini":
-        return False, f"Key verification is only implemented for 'gemini', not '{provider}'."
+    if provider != "fal":
+        return False, f"Key verification is only implemented for 'fal', not '{provider}'."
 
     model = model or settings.embedding_model
-    async with httpx.AsyncClient(base_url=GEMINI_BASE_URL, timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             response = await client.post(
-                f"/models/{model}:embedContent",
-                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
-                json={"model": f"models/{model}",
-                      "content": {"parts": [{"text": "connectivity check"}]}},
+                FAL_EMBEDDINGS_URL,
+                headers={"Authorization": f"Key {api_key}",
+                         "Content-Type": "application/json"},
+                json={"model": model, "input": ["connectivity check"]},
             )
         except httpx.HTTPError as e:
-            return False, f"Could not reach the Gemini API: {e}"
+            return False, f"Could not reach fal.ai: {e}"
 
     if response.status_code == 200:
-        dims = len(response.json()["embedding"]["values"])
+        dims = len(response.json()["data"][0]["embedding"])
         return True, f"Key accepted — {model} responded with {dims} dimensions."
 
     try:
         detail = response.json()["error"]["message"]
     except Exception:
-        detail = response.text[:200]
+        try:
+            detail = response.json()["detail"]
+        except Exception:
+            detail = response.text[:200]
+
     if response.status_code in (400, 401, 403):
-        return False, f"Key rejected by Gemini: {detail}"
+        # A 401 here has two very different causes, and saying which one saves
+        # an afternoon: the fal key itself may be wrong, or the key may be fine
+        # and simply lack access to the upstream model behind OpenRouter.
+        return False, (
+            f"Rejected by fal.ai for model '{model}': {detail}. "
+            f"Check the key, and that this account can reach that model."
+        )
     if response.status_code == 429:
         # The key is valid; it is the quota that is exhausted. Refusing here
         # would block swapping in a key precisely when it is needed.
-        return False, f"Quota exceeded for this key: {detail}"
+        return False, f"Rate limited on this key: {detail}"
     return False, f"Unexpected response {response.status_code}: {detail}"
 
 
@@ -402,9 +392,7 @@ async def set_api_key(provider: str, api_key: str) -> None:
     rebuilds it with the new credentials.
     """
     provider = provider.lower()
-    if provider == "gemini":
-        settings.gemini_api_key = api_key
-    elif provider == "fal":
+    if provider == "fal":
         settings.fal_key = api_key
     else:
         raise ValueError(f"Unknown provider '{provider}'.")
@@ -423,7 +411,7 @@ async def close_clients() -> None:
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Gemini provider
+# Vector post-processing
 # ────────────────────────────────────────────────────────────────────────────
 
 def _normalize(vector: list[float]) -> list[float]:
@@ -439,91 +427,6 @@ def _normalize(vector: list[float]) -> list[float]:
     if magnitude == 0:
         return vector
     return [v / magnitude for v in vector]
-
-
-async def _gemini_embed(
-    texts: list[str], role: str, config: EmbeddingConfig
-) -> list[list[float]]:
-    """
-    Embed a batch of texts via Gemini's batchEmbedContents endpoint.
-
-    Each text is wrapped in its OWN request object. This matters: Gemini
-    aggregates multiple *parts* within a single content into one embedding,
-    but returns one embedding per *request*. Verified — a 3-request batch
-    returns 3 vectors, while a 3-part single content returns 1.
-    """
-    client = _get_client("gemini")
-    model = config.model
-    spec = get_model_spec(model)
-    url = f"/models/{model}:batchEmbedContents"
-
-    request = {
-        "model": f"models/{model}",
-        "outputDimensionality": config.dimensions,
-    }
-    if spec["task_style"] == "task_type":
-        request["taskType"] = (
-            "RETRIEVAL_QUERY" if role == ROLE_QUERY else "RETRIEVAL_DOCUMENT"
-        )
-
-    request_body = {
-        "requests": [
-            {**request, "content": {"parts": [{"text": text}]}} for text in texts
-        ]
-    }
-
-    for attempt in range(1, MAX_RETRIES + 1):
-        # Gemini counts each text as one request against the per-minute quota.
-        await _limiter_for("gemini", config.requests_per_minute).acquire(len(texts))
-
-        try:
-            response = await client.post(url, json=request_body)
-
-            if response.status_code == 429 and attempt < MAX_RETRIES:
-                delay = _retry_after_seconds(response) or (
-                    RETRY_BASE_DELAY * (2 ** attempt)
-                )
-                logger.warning(
-                    f"Gemini rate limited (429). Retrying in {delay:.1f}s "
-                    f"(attempt {attempt}/{MAX_RETRIES})..."
-                )
-                await asyncio.sleep(delay + 1.0)
-                continue
-
-            response.raise_for_status()
-            embeddings = [item["values"] for item in response.json()["embeddings"]]
-
-            if len(embeddings) != len(texts):
-                raise RuntimeError(
-                    f"Gemini returned {len(embeddings)} embeddings "
-                    f"for {len(texts)} inputs."
-                )
-
-            for embedding in embeddings:
-                if len(embedding) != config.dimensions:
-                    raise RuntimeError(
-                        f"Gemini returned a {len(embedding)}-dim vector but this "
-                        f"knowledge base stores {config.dimensions}. "
-                        f"The pgvector column would reject it."
-                    )
-
-            return [_normalize(e) for e in embeddings]
-
-        except Exception as e:
-            if attempt == MAX_RETRIES:
-                logger.error(
-                    f"Gemini embedding API failed after {MAX_RETRIES} attempts: {e}"
-                )
-                raise
-
-            delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
-            logger.warning(
-                f"Gemini embedding attempt {attempt}/{MAX_RETRIES} failed: {e}. "
-                f"Retrying in {delay}s..."
-            )
-            await asyncio.sleep(delay)
-
-    raise RuntimeError("Embedding generation failed unexpectedly.")
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -578,7 +481,6 @@ async def _fal_embed(
 # ────────────────────────────────────────────────────────────────────────────
 
 _PROVIDERS = {
-    "gemini": _gemini_embed,
     "fal": _fal_embed,
 }
 

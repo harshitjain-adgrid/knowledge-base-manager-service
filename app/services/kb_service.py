@@ -307,11 +307,9 @@ def validate_model_choice(provider: str, model: str, dimensions: int) -> None:
             f"Supported: {', '.join(str(d) for d in spec['allowed_dimensions'])}."
         )
 
-    key = settings.gemini_api_key if spec["provider"] == "gemini" else settings.fal_key
-    if not key:
-        env_name = "GEMINI_API_KEY" if spec["provider"] == "gemini" else "FAL_KEY"
+    if not settings.fal_key:
         raise KbError(
-            f"'{model}' needs a {spec['provider']} API key, and {env_name} is not "
+            f"'{model}' needs a fal.ai API key, and FAL_AI_API_KEY is not "
             f"set on this server. API keys are read from the environment, not "
             f"stored per knowledge base."
         )
@@ -608,11 +606,7 @@ def available_models() -> list[dict]:
             "default_dimensions": spec["max_dimensions"],
             "input_token_limit": spec["input_token_limit"],
             "multimodal": spec["multimodal"],
-            "key_configured": bool(
-                settings.gemini_api_key
-                if spec["provider"] == "gemini"
-                else settings.fal_key
-            ),
+            "key_configured": bool(settings.fal_key),
         }
         for model, spec in sorted(MODEL_SPECS.items())
     ]
@@ -647,3 +641,28 @@ async def normalise_stored_dsns(db: AsyncSession) -> int:
             f"stored connection string."
         )
     return fixed
+
+
+async def migrate_provider_to_fal(db: AsyncSession) -> int:
+    """
+    Repoint knowledge bases still recorded against the retired 'gemini' provider.
+
+    The models did not change — gemini-embedding-2 is reached through fal now
+    instead of Google's own API, and both return the same vectors for the same
+    text (measured: cosine 1.000000 across query and document forms). So this
+    rewrites how the model is *reached* and leaves every stored vector valid.
+
+    Without it, a knowledge base registered before the switch would look up a
+    provider that no longer exists and fail on its first embedding call.
+    """
+    moved = 0
+    for kb in await list_kbs(db):
+        if (kb.embedding_provider or "").lower() != "gemini":
+            continue
+        kb.embedding_provider = "fal"
+        moved += 1
+        logger.info(
+            f"Knowledge base '{kb.slug}': provider 'gemini' -> 'fal' "
+            f"(model '{kb.embedding_model}' is unchanged, so its vectors stay valid)."
+        )
+    return moved

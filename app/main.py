@@ -109,6 +109,7 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as session:
         default_kb = await kb_service.ensure_default_kb(session)
         await kb_service.normalise_stored_dsns(session)
+        await kb_service.migrate_provider_to_fal(session)
         await session.commit()
 
     await init_kb_schema(

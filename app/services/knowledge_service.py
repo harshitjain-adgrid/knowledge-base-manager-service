@@ -122,7 +122,7 @@ async def update_document(
 
     if title is not None and title != document.title:
         document.title = title
-        # Some models (gemini-embedding-2 and friends) fold the document title
+        # Some models (gemini-embedding-2 among them) fold the document title
         # into the embedded text, so a title change makes their vectors stale.
         # For models that do not, a rename is free.
         if model_uses_title(profile.model):

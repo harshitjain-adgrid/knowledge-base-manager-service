@@ -1,3 +1,4 @@
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -28,26 +29,28 @@ class Settings(BaseSettings):
     secret_key: str = ""
 
     # ── Embedding provider ──
-    embedding_provider: str = "gemini"  # "gemini" | "fal"
+    #
+    # fal.ai only. It reaches the models through an OpenAI-compatible endpoint,
+    # so one key and one request shape cover every model offered.
+    embedding_provider: str = "fal"
 
-    # fal.ai OpenRouter
-    fal_key: str = ""
-
-    # Google Gemini (AI Studio)
-    gemini_api_key: str = ""
+    # fal.ai. FAL_AI_API_KEY is the name used across our services; FAL_KEY is
+    # what fal's own tooling exports, so both are accepted.
+    fal_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("FAL_AI_API_KEY", "FAL_KEY"),
+    )
 
     # ── Embedding configuration ──
     #
     # These are the defaults for the *default* knowledge base. Every additional
     # knowledge base carries its own provider, model and dimensions in the
     # registry, chosen when it is created.
-    # gemini  -> "gemini-embedding-2" (3072 native dims, 8192-token input)
-    # fal     -> "openai/text-embedding-3-large" (3072 dims)
     embedding_model: str = "gemini-embedding-2"
     embedding_dimensions: int = 3072
     max_embedding_batch_size: int = 20  # Texts per API request
-    # Gemini free tier allows 100 embed requests/min, and each text in a batch
-    # counts as one request. Set to 0 to disable client-side pacing.
+    # fal bills per token rather than per request, so this is pacing against
+    # rate limits rather than a quota. Set to 0 to disable client-side pacing.
     embedding_requests_per_minute: int = 90
 
     # ── Chunking configuration ──

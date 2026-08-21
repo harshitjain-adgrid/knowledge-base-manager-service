@@ -97,7 +97,7 @@ function CreateForm({
           name: name.trim(),
           description: description.trim() || undefined,
           dsn: fullDsn(),
-          embedding_provider: selected?.provider ?? 'gemini',
+          embedding_provider: selected?.provider ?? 'fal',
           embedding_model: model,
           embedding_dimensions: dimensions,
         }),
