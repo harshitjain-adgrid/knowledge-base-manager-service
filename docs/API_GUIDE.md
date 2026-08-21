@@ -283,8 +283,32 @@ rather than an error:
 
 ### `POST /api/v1/knowledge-bases`
 
-Register another database and choose the model its content will be embedded
+Register another knowledge base and choose the model its content will be embedded
 with.
+
+**The usual case — in this service's own database.** Omit `dsn`. The knowledge
+base gets its own table pair alongside the others, nothing is stored, and the
+connection is read from `DATABASE_URL` on every use — so rotating the database
+password stays an `.env` edit rather than an update to every registered row.
+
+```http
+POST /api/v1/knowledge-bases
+Content-Type: application/json
+
+{
+  "name": "Merchant Ops",
+  "description": "Support runbooks for the ops team",
+  "embedding_provider": "gemini",
+  "embedding_model": "gemini-embedding-2",
+  "embedding_dimensions": 3072
+}
+```
+
+That knowledge base comes back with `"from_environment": true` and a
+`dsn_preview` matching the service's own database.
+
+**The exception — on a different Postgres host.** Pass `dsn`. It is stored
+encrypted and never returned.
 
 ```http
 POST /api/v1/knowledge-bases
@@ -325,7 +349,7 @@ Content-Type: application/json
 | Field | Required | Notes |
 |---|---|---|
 | `name` | yes | 1–128 characters |
-| `dsn` | yes | Stored encrypted, never returned |
+| `dsn` | no | Omit for this service's own database, which is the usual case. Given only for a different Postgres host, and then stored encrypted and never returned |
 | `embedding_model` | yes | One of `GET /embedding-models` |
 | `embedding_dimensions` | yes | Must be in that model's `allowed_dimensions` |
 | `slug` | no | Derived from the name — `Merchant Ops` → `merchant-ops`. Also names its tables: `kb_merchant_ops_documents` and `kb_merchant_ops_chunks` |

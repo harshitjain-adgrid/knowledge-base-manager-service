@@ -197,6 +197,8 @@ export interface KnowledgeBase {
   description: string | null;
   /** user@host:port/database — never the password. */
   dsn_preview: string;
+  /** Names this knowledge base's tables: <prefix>_documents and <prefix>_chunks. */
+  table_prefix: string;
   embedding_provider: string;
   embedding_model: string;
   embedding_dimensions: number;
@@ -222,7 +224,8 @@ export interface KnowledgeBaseCreate {
   name: string;
   slug?: string;
   description?: string;
-  dsn: string;
+  /** Omit to use this service's own database. Only set for a different host. */
+  dsn?: string;
   embedding_provider: string;
   embedding_model: string;
   embedding_dimensions: number;

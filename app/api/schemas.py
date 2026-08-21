@@ -324,16 +324,20 @@ class KnowledgeBaseCreate(BaseModel):
     )
     description: str | None = Field(default=None, max_length=2000)
 
-    dsn: str = Field(
-        ...,
+    dsn: str | None = Field(
+        default=None,
         min_length=12,
         max_length=1024,
         examples=["postgresql://kb_user:password@10.0.0.7:5432/merchant_ops"],
         description=(
-            "Postgres connection string, including credentials. Stored "
-            "encrypted and never returned. The host must be reachable from the "
-            "server — if it sits behind SSH, run the tunnel on the server and "
-            "point this at the local end of it."
+            "Only for a knowledge base on a different Postgres host. **Leave it "
+            "out to use this service's own database**, which is the usual case — "
+            "the knowledge base gets its own table pair there, nothing is "
+            "stored, and rotating the database password stays an .env edit.\n\n"
+            "When given: a Postgres connection string including credentials, "
+            "stored encrypted and never returned. The host must be reachable "
+            "from the server — if it sits behind SSH, run the tunnel on the "
+            "server and point this at the local end of it."
         ),
     )
 

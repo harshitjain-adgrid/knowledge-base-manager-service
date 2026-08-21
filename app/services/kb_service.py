@@ -325,7 +325,7 @@ async def create_kb(
     db: AsyncSession,
     *,
     name: str,
-    dsn: str,
+    dsn: str | None = None,
     embedding_provider: str,
     embedding_model: str,
     embedding_dimensions: int,
@@ -335,12 +335,20 @@ async def create_kb(
     chunk_overlap: int | None = None,
 ) -> KnowledgeBase:
     """
-    Register a knowledge base and prepare its schema.
+    Register a knowledge base and prepare its tables.
 
     The order matters: validate, then connect, then create the tables, and only
     then write the row. A knowledge base that appears in the list is one that has
     been proven to work — an admin should never have to wonder whether a row in
     the registry is real.
+
+    `dsn` is optional, and omitting it is the usual case: the knowledge base gets
+    its own table pair in the service's own database. Nothing is stored, so the
+    connection is read from DATABASE_URL every time and rotating the database
+    password stays an .env edit rather than a row-by-row migration.
+
+    Pass a `dsn` only for a knowledge base on a different Postgres host. That one
+    is stored encrypted, because the server has no other way to find it.
     """
     name = (name or "").strip()
     if not name:
@@ -371,12 +379,19 @@ async def create_kb(
                 f"identifier."
             )
 
-    normalised = normalise_dsn(dsn)
+    # No connection string means "in this service's own database". The row keeps
+    # dsn_encrypted NULL, exactly like the default knowledge base, so resolve_dsn
+    # reads DATABASE_URL for it on every connect and a rotated database password
+    # stays an .env edit rather than a row-by-row migration.
+    own_database = not (dsn or "").strip()
+    normalised = settings.database_url if own_database else normalise_dsn(dsn)
 
     # Sharing a database is fine now — each knowledge base has its own tables.
     # Sharing a prefix is not, and the registry's unique constraint enforces it.
 
-    if not crypto_service.is_available():
+    # Only a connection string that has to be *stored* needs the key. A knowledge
+    # base in the service's own database stores nothing, so it works without one.
+    if not own_database and not crypto_service.is_available():
         raise KbError(
             "SECRET_KEY is not set on the server, so a connection string cannot "
             "be stored safely. Add one to .env and restart:\n"
@@ -393,7 +408,7 @@ async def create_kb(
         name=name,
         table_prefix=prefix,
         description=(description or "").strip() or None,
-        dsn_encrypted=crypto_service.encrypt(normalised),
+        dsn_encrypted=None if own_database else crypto_service.encrypt(normalised),
         dsn_preview=dsn_preview(normalised),
         embedding_provider=embedding_provider.lower(),
         embedding_model=embedding_model,

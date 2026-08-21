@@ -61,8 +61,9 @@ ENVIRONMENT=production
 # Postgres is on this host, so no tunnel and no exposure to the network
 DATABASE_URL=postgresql+asyncpg://qa:<password>@localhost:5434/vector_qa
 
-# Needed only if you add a second knowledge base — it encrypts the connection
-# strings of the ones added through the UI. Generate with:
+# Needed only for a knowledge base on a *different* Postgres host — it encrypts
+# that connection string before storing it. Knowledge bases in this service's own
+# database store nothing and work without it. Generate with:
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 SECRET_KEY=<generated>
 
@@ -219,7 +220,9 @@ serves `frontend/dist` from there.
 - [ ] Proxy read timeout raised above 60s, or large uploads will be cut off
 - [ ] `pg_dump` scheduled — `knowledge_chunks` holds vectors that cost API calls to regenerate
 - [ ] `SECRET_KEY` backed up somewhere other than the database it protects — losing
-      it makes every stored knowledge-base connection string unreadable
+      it makes every stored knowledge-base connection string unreadable. Only
+      knowledge bases on another host store one; those in this service's own
+      database are unaffected
 - [ ] One `pg_dump` covers everything: all knowledge bases live in one schema,
       with a table pair each (`kb_<slug>_documents`, `kb_<slug>_chunks`)
 - [ ] Any additional knowledge base's host is reachable **from this server**, not

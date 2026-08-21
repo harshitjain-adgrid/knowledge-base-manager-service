@@ -48,8 +48,10 @@ function CreateForm({
   const usable = models.filter((m) => m.key_configured);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  // Almost every knowledge base lives in this service's own database, so that is
+  // the default and it asks for nothing. A different host is the exception.
+  const [elsewhere, setElsewhere] = useState(false);
   const [dsn, setDsn] = useState('');
-  const [schema, setSchema] = useState('');
   const [model, setModel] = useState(usable[0]?.model ?? models[0]?.model ?? '');
   const [dimensions, setDimensions] = useState(
     usable[0]?.default_dimensions ?? models[0]?.default_dimensions ?? 3072,
@@ -61,12 +63,9 @@ function CreateForm({
 
   const selected = models.find((m) => m.model === model);
 
-  const fullDsn = () => {
-    const trimmed = dsn.trim();
-    const s = schema.trim();
-    if (!s) return trimmed;
-    return trimmed.includes('?') ? `${trimmed}&schema=${s}` : `${trimmed}?schema=${s}`;
-  };
+  // undefined tells the server "your own database" — it stores nothing and reads
+  // DATABASE_URL on every connect.
+  const fullDsn = () => (elsewhere ? dsn.trim() || undefined : undefined);
 
   const chooseModel = (next: string) => {
     setModel(next);
@@ -78,7 +77,9 @@ function CreateForm({
     setTesting(true);
     setTest(null);
     try {
-      setTest(await api.testConnection(fullDsn()));
+      // Only reachable while a remote host is being entered; the service's own
+      // database needs no test, it is already connected.
+      setTest(await api.testConnection(dsn.trim()));
     } catch (e: any) {
       setTest({ ok: false, message: e.message, dsn_preview: null });
     } finally {
@@ -137,69 +138,100 @@ function CreateForm({
           <Server size={15} /> Where the documents live
         </h3>
 
-        <Field
-          label="Postgres connection string"
-          hint="Needs the pgvector extension. Stored encrypted on the server and never sent back to this page."
-        >
-          <input
-            value={dsn}
-            onChange={(e) => {
-              setDsn(e.target.value);
-              setTest(null);
-            }}
-            placeholder="postgresql://user:password@host:5432/database"
-            className={monoInputClass}
-            required
-            autoComplete="off"
-          />
-        </Field>
+        <div className="space-y-2">
+          <label className="flex items-start gap-2.5 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+            <input
+              type="radio"
+              checked={!elsewhere}
+              onChange={() => {
+                setElsewhere(false);
+                setTest(null);
+              }}
+              className="mt-0.5"
+            />
+            <span className="text-sm">
+              <span className="font-medium text-gray-900">
+                In this service&rsquo;s database
+              </span>
+              <span className="block text-xs text-gray-500 mt-0.5">
+                Gets its own pair of tables alongside the others. Nothing to configure,
+                and no connection string is stored — so rotating the database password
+                stays a change to the server&rsquo;s <code>.env</code>.
+              </span>
+            </span>
+          </label>
 
-        <Field
-          label="Schema (optional)"
-          hint="Use this when the database is shared. Most Postgres users can create a schema but not a database, and separate schemas keep two knowledge bases from seeing each other's tables."
-        >
-          <input
-            value={schema}
-            onChange={(e) => {
-              setSchema(e.target.value);
-              setTest(null);
-            }}
-            placeholder="merchant_ops"
-            className={monoInputClass}
-            autoComplete="off"
-          />
-        </Field>
-
-        <div className="flex items-start gap-3">
-          <Button
-            type="button"
-            onClick={runTest}
-            loading={testing}
-            disabled={!dsn.trim()}
-            icon={<Plug size={16} />}
-          >
-            {testing ? 'Connecting…' : 'Test connection'}
-          </Button>
-          {test && (
-            <div
-              className={`flex-1 p-2.5 rounded-lg border text-sm ${
-                test.ok
-                  ? 'bg-green-50 border-green-100 text-green-800'
-                  : 'bg-red-50 border-red-100 text-red-700'
-              }`}
-            >
-              {test.message}
-            </div>
-          )}
+          <label className="flex items-start gap-2.5 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+            <input
+              type="radio"
+              checked={elsewhere}
+              onChange={() => {
+                setElsewhere(true);
+                setTest(null);
+              }}
+              className="mt-0.5"
+            />
+            <span className="text-sm">
+              <span className="font-medium text-gray-900">On a different Postgres host</span>
+              <span className="block text-xs text-gray-500 mt-0.5">
+                For a knowledge base that has to live on its own server.
+              </span>
+            </span>
+          </label>
         </div>
 
-        <p className="text-xs text-gray-500 flex items-start gap-1.5">
-          <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-          <span>
-            The host must be reachable from the server, not from your laptop. If it sits
-            behind SSH, run the tunnel on the server and point this at the local end of it.
-          </span>
-        </p>
+        {elsewhere && (
+          <>
+            <Field
+              label="Postgres connection string"
+              hint="Needs the pgvector extension. Stored encrypted on the server and never sent back to this page."
+            >
+              <input
+                value={dsn}
+                onChange={(e) => {
+                  setDsn(e.target.value);
+                  setTest(null);
+                }}
+                placeholder="postgresql://user:password@host:5432/database"
+                className={monoInputClass}
+                required
+                autoComplete="off"
+              />
+            </Field>
+
+            <div className="flex items-start gap-3">
+              <Button
+                type="button"
+                onClick={runTest}
+                loading={testing}
+                disabled={!dsn.trim()}
+                icon={<Plug size={16} />}
+              >
+                {testing ? 'Connecting…' : 'Test connection'}
+              </Button>
+              {test && (
+                <div
+                  className={`flex-1 p-2.5 rounded-lg border text-sm ${
+                    test.ok
+                      ? 'bg-green-50 border-green-100 text-green-800'
+                      : 'bg-red-50 border-red-100 text-red-700'
+                  }`}
+                >
+                  {test.message}
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs text-gray-500 flex items-start gap-1.5">
+              <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+              <span>
+                The host must be reachable from the server, not from your laptop. If it
+                sits behind SSH, run the tunnel on the server and point this at the local
+                end of it.
+              </span>
+            </p>
+          </>
+        )}
       </div>
 
       <div className="border-t border-gray-100 pt-5 space-y-4">
@@ -344,6 +376,12 @@ function KbCard({
           <dd className="font-mono text-xs text-gray-900 break-all">{kb.dsn_preview}</dd>
         </div>
         <div>
+          <dt className="text-gray-500 text-xs">Tables</dt>
+          <dd className="font-mono text-xs text-gray-900 break-all">
+            {kb.table_prefix}_documents · {kb.table_prefix}_chunks
+          </dd>
+        </div>
+        <div>
           <dt className="text-gray-500 text-xs">Model</dt>
           <dd className="font-mono text-xs text-gray-900">
             {kb.embedding_model} · {kb.embedding_dimensions}d
@@ -361,11 +399,19 @@ function KbCard({
         </div>
       </dl>
 
-      {kb.from_environment && (
+      {kb.from_environment && kb.is_default && (
         <p className="mt-3 text-xs text-gray-500 flex items-start gap-1.5">
           <Lock size={12} className="shrink-0 mt-0.5" />
           Configured in the server's environment. Its connection string and model are
           changed there, not here.
+        </p>
+      )}
+
+      {kb.from_environment && !kb.is_default && (
+        <p className="mt-3 text-xs text-gray-500 flex items-start gap-1.5">
+          <Lock size={12} className="shrink-0 mt-0.5" />
+          Lives in this service's own database. No connection string is stored for it, so
+          it follows the server's <code>DATABASE_URL</code> if that changes.
         </p>
       )}
 

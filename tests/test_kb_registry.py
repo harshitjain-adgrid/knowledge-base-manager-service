@@ -241,3 +241,36 @@ def test_a_passphrase_that_is_not_a_fernet_key_still_works(monkeypatch):
 
     stored = crypto_service.encrypt("postgresql+asyncpg://u:p@h/db")
     assert crypto_service.decrypt(stored) == "postgresql+asyncpg://u:p@h/db"
+
+
+# ── Where a knowledge base lives ─────────────────────────────────────────────
+#
+# Omitting the connection string means "this service's own database". The row
+# must keep dsn_encrypted NULL for that, because resolve_dsn treats NULL as
+# "read DATABASE_URL every time" — which is what keeps a rotated database
+# password an .env edit instead of a migration over every registered row.
+
+def test_no_connection_string_means_the_services_own_database():
+    from app.db.models import KnowledgeBase
+
+    kb = KnowledgeBase(dsn_encrypted=None)
+    assert kb_service.resolve_dsn(kb) == kb_service.settings.database_url
+
+
+def test_a_stored_connection_string_is_used_instead_of_the_environment(monkeypatch):
+    from app.db.models import KnowledgeBase
+
+    monkeypatch.setattr(crypto_service.settings, "secret_key", "a test key")
+    remote = "postgresql+asyncpg://u:p@10.0.0.7:5432/other"
+
+    kb = KnowledgeBase(dsn_encrypted=crypto_service.encrypt(remote))
+    assert kb_service.resolve_dsn(kb) == remote
+
+
+def test_the_two_cases_are_told_apart_by_a_blank_connection_string():
+    # What create_kb branches on. Whitespace counts as absent, so a form that
+    # submits an untouched field does not register a knowledge base pointing at
+    # an empty connection string.
+    for blank in (None, "", "   ", "\t\n"):
+        assert not (blank or "").strip(), f"{blank!r} should read as absent"
+    assert (" postgresql://u:p@h/db ").strip()
