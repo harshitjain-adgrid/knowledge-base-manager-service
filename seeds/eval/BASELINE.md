@@ -7,6 +7,115 @@ dimensions, `min_score=0.65`, `decision_margin=0.02`.
 Re-measured 21 August 2026 after moving from Google's API to fal.ai, **same
 model, same numbers — 67/68 and 68/81, tier for tier, failure for failure.**
 
+---
+
+## Product knowledge v2 — 27 August 2026
+
+A second corpus, `content/product-knowledge-v2/` in `kb_product_knowledge_v2`:
+18 documents, 146 chunks, written to Document Contract v2 from `APP_OVERVIEW.md`
+and the internal product knowledge base draft. New subject matter — KYC, joining,
+WhatsApp login, the Champion Program, placement, categories, the loyalty economy,
+notifications, the customer app — not a rewrite of the 28.
+
+```
+PRODUCT KNOWLEDGE v2  (recall@5)   18 documents, 146 chunks, 83 queries
+  easy          18/18  100.0%
+  medium        26/26  100.0%     18 Roman Hinglish + 8 Devanagari
+  procedural     6/6   100.0%
+  entity         6/6   100.0%
+  confusable     8/12   66.7%
+  negative      10/15   66.7%
+  overall       74/83   89.2%
+```
+
+**The set can fail.** That was the requirement in §2.8 of the strategy — at v1's
+98.5% a change that halved retrieval failures showed up as +1 query. There is now
+somewhere for the number to go.
+
+### The two tiers that were built to fail did not
+
+`procedural` 6/6 and `entity` 6/6, both perfect on the first run.
+
+- **`procedural`** is the class that produced the only failure a real merchant
+  reported — *"offer kaise banau, step by step bataio"* refusing because the
+  offers corpus had no numbered procedure to land on. Contract v2 makes numbered
+  steps mandatory for every guide and `validate_text_document` rejects a guide
+  without them. Six procedural queries, six hits.
+- **`entity`** was expected to be the case for a lexical index (§2.1). UTR, KYC,
+  STOP, PIN, *Stalls & Kiosks*, *Under review* all retrieved correctly at
+  recall@5 from the dense index alone.
+
+**Read the entity result as a caution about §2.1, not a refutation of it.** These
+literals appear in body prose and in front-matter `entities`, and this corpus is
+18 documents. The BM25 case is about rare tokens in a *large* corpus; a tier that
+passes at 18 documents says little about 150. It does mean this tier cannot
+currently justify the work — build the corpus out first, then re-measure.
+
+### The negative tier is the finding that matters
+
+Five of six failures are the same shape, and every one is a value the source
+document marks `[TBD]`:
+
+```
+'what does the champion program tablet cost'   -> What the Champion Program Is  @0.803
+'how many coins do I get per referral'         -> How Referral Rewards Are Earned @0.772
+'how many times can I resubmit my documents'   -> When Your KYC Is Rejected      @0.772
+'how many digits is the pin'                   -> Your PIN and What It Authorises @0.730
+'how much is a paid placement per month'       -> Where Your Deal Appears        @0.706
+```
+
+This is §1.3 reproduced exactly, on a corpus built after reading §1.3. The
+*topic* is covered richly and only the *number* is missing, so the nearest
+document scores 0.70–0.80 — higher than plenty of genuinely covered questions.
+No threshold separates these from real answers.
+
+It is also the more dangerous half of the failure space. A merchant asking what
+the tablet costs gets the Champion Program document at 0.803, and that document
+never mentions a price. The model is being handed strong evidence that the topic
+is documented, and nothing that answers the question.
+
+**This is the measured case for `type: boundary` documents (§2.6b)** — a document
+that says explicitly *"LessPay does not publish a tablet fee here"* turns a
+confident invention into a confident, correct decline. It was Phase 5 in the
+sequencing; this result argues for pulling it forward, because the gap it covers
+is not hypothetical.
+
+### The confusable tier, and where the instrument is at fault
+
+8/12, down from v1's 92.9% — expected, since v2 was written with near-neighbour
+pairs on purpose. But the failures split two ways, and honesty about which is
+which matters more than the number:
+
+```
+'does setting my code verify my business'        -> KYC doc @1, PIN doc not in top 5
+'does getting a device make my offers visible'   -> placement @2, Champion not in top 5
+"do the shopper's coins come out of my earnings" -> Coins and Credits @1, target @2
+'are the texts I get the same as my buyers get'  -> customer-messages @1, target @5
+```
+
+The last two retrieved **both** documents, and in both cases the document that
+won is arguably the better owner of the question — *"Coins and Credits — Who
+Holds What"* exists precisely to answer whether a customer's coins are yours.
+Those look like **labelling errors in this evaluation set**, not retrieval
+failures.
+
+The first two are genuine: the target never reached the top 5.
+
+There is a pattern worth naming in them. A `## Not this` section (§2.6a) makes a
+document match its *neighbour's* queries — `what-kyc-unlocks.md` contains "KYC is
+not your PIN", so a PIN-versus-KYC question lands on the KYC document. The
+disambiguation works as content and competes as an index entry.
+
+**Nothing was changed in response to any of this.** Relabelling to raise the
+number is the same error as adding query vocabulary to a document — the
+instrument would have been calibrated against itself either way. The labels and
+the content stand until a decision is made deliberately.
+
+### Cost
+
+83 queries at recall@5, 272s over the SSH tunnel. Loading 18 documents was 146
+embed calls, 105s.
+
 ### Why the provider change needed no re-embedding
 
 fal reaches `gemini-embedding-2` through OpenRouter's OpenAI-compatible

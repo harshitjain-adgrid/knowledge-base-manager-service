@@ -1,0 +1,215 @@
+# Product-knowledge v2 retrieval evaluation set.
+#
+# Targets content/product-knowledge-v2/ — 18 documents written to Document
+# Contract v2, loaded into the `product-knowledge-v2` knowledge base.
+#
+# Built to the rules in docs/KNOWLEDGE_BASE_STRATEGY.md §2.8, which exist
+# because they are what makes a number trustworthy:
+#
+#   - No query copies a heading or a "Frequently asked as" line. That would
+#     measure string overlap, not retrieval, and every document would pass
+#     however badly it was written.
+#   - No utterance was ever added to a document because a query here failed.
+#     That calibrates the instrument against itself.
+#   - Failing cases stay in the set.
+#
+# tiers:
+#   easy       — the subject of the document, in merchant words
+#   medium     — asked sideways; Roman Hinglish and Devanagari, scored together
+#                but written separately so a script-specific failure is visible
+#   confusable — close to a named near-neighbour. `not_expect` names it, and
+#                retrieving the neighbour first fails the case
+#   procedural — "step by step", "kaise karu". The failure class that made
+#                'offer kaise banau step by step' refuse against v1
+#   entity     — a rare literal: UTR, PIN, KYC, STOP. Dense vectors average
+#                these away; this tier is what a lexical signal would fix
+#   negative   — genuinely uncovered. The right outcome is a low top score
+
+queries:
+
+# ── easy: one per document ──────────────────────────────────────────────
+- { q: "what does verification unlock on my account",            expect: "What KYC Unlocks",                         tier: easy }
+- { q: "how do I get my business verified",                      expect: "Completing Your KYC",                      tier: easy }
+- { q: "my verification did not pass, what now",                 expect: "When Your KYC Is Rejected",                tier: easy }
+- { q: "what do I have to do to start on lesspay",               expect: "How You Join LessPay",                     tier: easy }
+- { q: "can I sign in through whatsapp instead of sms",          expect: "Logging In With WhatsApp",                 tier: easy }
+- { q: "which actions ask me for my secret code",                expect: "Your PIN and What It Authorises",          tier: easy }
+- { q: "what is the arrangement where lesspay puts a device in my shop", expect: "What the Champion Program Is",     tier: easy }
+- { q: "where has my device reached",                            expect: "Tracking Your Champion Program Tablet",    tier: easy }
+- { q: "can I pay to be seen higher in the app",                 expect: "Where Your Deal Appears",                  tier: easy }
+- { q: "which business type should I pick for my shop",          expect: "Your Business Category",                   tier: easy }
+- { q: "who holds coins and who holds credits",                  expect: "Coins and Credits — Who Holds What",       tier: easy }
+- { q: "when does the reward for bringing someone actually land", expect: "How Referral Rewards Are Earned",         tier: easy }
+- { q: "why does lesspay keep texting me",                       expect: "Messages LessPay Sends You",               tier: easy }
+- { q: "do the people who buy from me get texted about my deals", expect: "Why Your Customers Get Messages",         tier: easy }
+- { q: "how does a shopper end up at my shop",                   expect: "How Customers Discover You",               tier: easy }
+- { q: "walk me through what happens at the counter when someone pays", expect: "How a Customer Pays You",           tier: easy }
+- { q: "what does the shopper side of lesspay let them do",      expect: "What Customers Can Do in Their App",       tier: easy }
+- { q: "my payout is stuck",                                     expect: "When a Settlement Is On Hold",             tier: easy }
+
+# ── medium: asked sideways, Roman Hinglish ──────────────────────────────
+- { q: "kyc ke bina kya kya band rehta hai",                     expect: "What KYC Unlocks",                         tier: medium }
+- { q: "verification ka status kaise pata karein",               expect: "Completing Your KYC",                      tier: medium }
+- { q: "kyc dobara kaise bhejein",                               expect: "When Your KYC Is Rejected",                tier: medium }
+- { q: "naya merchant shuru kaise kare",                         expect: "How You Join LessPay",                     tier: medium }
+- { q: "whatsapp wala link kaam nahi kar raha",                  expect: "Logging In With WhatsApp",                 tier: medium }
+- { q: "secret code bhool gaya to kya karein",                   expect: "Your PIN and What It Authorises",          tier: medium }
+- { q: "dukaan mein tablet kaise lagega",                        expect: "What the Champion Program Is",             tier: medium }
+- { q: "tablet bhej diya hai kya",                               expect: "Tracking Your Champion Program Tablet",    tier: medium }
+- { q: "paise dekar upar dikhna hai",                            expect: "Where Your Deal Appears",                  tier: medium }
+- { q: "kirana ki dukaan kaunse type mein aayegi",               expect: "Your Business Category",                   tier: medium }
+- { q: "sikke aur reward balance alag alag hain kya",            expect: "Coins and Credits — Who Holds What",       tier: medium }
+- { q: "dost ko joda par abhi tak kuch nahi mila",               expect: "How Referral Rewards Are Earned",          tier: medium }
+- { q: "ye message kis wajah se aaya hai",                       expect: "Messages LessPay Sends You",               tier: medium }
+- { q: "grahak ko bina puche message bhej sakte hain kya",       expect: "Why Your Customers Get Messages",          tier: medium }
+- { q: "app par meri dukaan upar kaise aayegi",                  expect: "How Customers Discover You",               tier: medium }
+- { q: "grahak ko chhoot apne aap milti hai kya",                expect: "How a Customer Pays You",                  tier: medium }
+- { q: "grahak apne app mein kya kya karta hai",                 expect: "What Customers Can Do in Their App",       tier: medium }
+- { q: "bank mein paisa kyun nahi pahuncha",                     expect: "When a Settlement Is On Hold",             tier: medium }
+
+# ── medium: asked in Devanagari, the script speech-to-text produces ─────
+- { q: "केवाईसी के बिना क्या बंद रहता है",                            expect: "What KYC Unlocks",                         tier: medium }
+- { q: "व्हाट्सएप से कैसे लॉगिन करें",                                expect: "Logging In With WhatsApp",                 tier: medium }
+- { q: "पिन बदलने पर क्या होता है",                                  expect: "Your PIN and What It Authorises",          tier: medium }
+- { q: "टैबलेट कब तक आएगा",                                       expect: "Tracking Your Champion Program Tablet",    tier: medium }
+- { q: "मेरी दुकान किस श्रेणी में आएगी",                              expect: "Your Business Category",                   tier: medium }
+- { q: "सिक्के किसके पास होते हैं",                                   expect: "Coins and Credits — Who Holds What",       tier: medium }
+- { q: "रेफरल का इनाम कब मिलेगा",                                  expect: "How Referral Rewards Are Earned",          tier: medium }
+- { q: "पैसा बैंक में क्यों नहीं आया",                                 expect: "When a Settlement Is On Hold",             tier: medium }
+
+# ── procedural: the Failure A class, one per guide ──────────────────────
+- { q: "verification ka pura process step by step batao",        expect: "Completing Your KYC",                      tier: procedural }
+- { q: "step by step batao lesspay par kaise judein",            expect: "How You Join LessPay",                     tier: procedural }
+- { q: "whatsapp login ka tarika step by step",                  expect: "Logging In With WhatsApp",                 tier: procedural }
+- { q: "business type badalne ka process kya hai",               expect: "Your Business Category",                   tier: procedural }
+- { q: "tablet aane se live hone tak ka process batao",          expect: "Tracking Your Champion Program Tablet",    tier: procedural }
+- { q: "secret code reset karne ka tarika step by step",         expect: "Your PIN and What It Authorises",          tier: procedural }
+
+# ── entity: rare literals a dense vector averages away ──────────────────
+- { q: "what is a UTR",                                          expect: "When a Settlement Is On Hold",             tier: entity }
+- { q: "what does KYC stand for",                                expect: "What KYC Unlocks",                         tier: entity }
+- { q: "what happens if someone replies STOP",                   expect: "Why Your Customers Get Messages",          tier: entity }
+- { q: "PIN kis kis cheez ko authorise karta hai",               expect: "Your PIN and What It Authorises",          tier: entity }
+- { q: "what is Stalls and Kiosks",                              expect: "Your Business Category",                   tier: entity }
+- { q: "mine says Under review, is that with lesspay now",       expect: "Completing Your KYC",                      tier: entity }
+
+# ── confusable: the neighbour is named ──────────────────────────────────
+- { q: "is my secret code the same thing as being verified",     expect: "What KYC Unlocks",                    not_expect: "Your PIN and What It Authorises",       tier: confusable }
+- { q: "does setting my code verify my business",                expect: "Your PIN and What It Authorises",     not_expect: "What KYC Unlocks",                      tier: confusable }
+- { q: "does getting a device make my offers more visible",      expect: "What the Champion Program Is",        not_expect: "Where Your Deal Appears",               tier: confusable }
+- { q: "does paying for a better position get me hardware",      expect: "Where Your Deal Appears",             not_expect: "What the Champion Program Is",          tier: confusable }
+- { q: "can I take my reward balance out to my bank",            expect: "Coins and Credits — Who Holds What",  not_expect: "When a Settlement Is On Hold",          tier: confusable }
+- { q: "do the shopper's coins come out of my earnings",         expect: "What Customers Can Do in Their App",  not_expect: "Coins and Credits — Who Holds What",     tier: confusable }
+- { q: "are the texts I get the same ones my buyers get",        expect: "Messages LessPay Sends You",          not_expect: "Why Your Customers Get Messages",       tier: confusable }
+- { q: "do buyers see anything about my verification",           expect: "Why Your Customers Get Messages",     not_expect: "Messages LessPay Sends You",            tier: confusable }
+- { q: "the link i was sent has stopped working",                expect: "Logging In With WhatsApp",            not_expect: "Your PIN and What It Authorises",       tier: confusable }
+- { q: "my device arrived but does nothing yet",                 expect: "Tracking Your Champion Program Tablet", not_expect: "What the Champion Program Is",         tier: confusable }
+- { q: "nothing has ever reached my bank account",               expect: "When a Settlement Is On Hold",        not_expect: "What KYC Unlocks",                      tier: confusable }
+- { q: "why does a shopper see a different offer than my other customer", expect: "How a Customer Pays You",    not_expect: "How Customers Discover You",            tier: confusable }
+
+# ── negative: genuinely uncovered ───────────────────────────────────────
+- { q: "how do I file my gst return",                            tier: negative }
+- { q: "what is the mdr percentage lesspay charges",              expect: "Fee and Settlement Figures Chotu Cannot Quote", tier: boundary }
+- { q: "how many days does settlement take, T+1 or T+2",          expect: "Fee and Settlement Figures Chotu Cannot Quote", tier: boundary }
+- { q: "how many digits is the pin",                              expect: "Reward and Program Figures Chotu Cannot Quote", tier: boundary }
+- { q: "how many coins do I get per referral",                    expect: "Reward and Program Figures Chotu Cannot Quote", tier: boundary }
+- { q: "what does the champion program tablet cost",              expect: "Reward and Program Figures Chotu Cannot Quote", tier: boundary }
+- { q: "how much is a paid placement per month",                  expect: "Reward and Program Figures Chotu Cannot Quote", tier: boundary }
+- { q: "which documents are accepted for verification",          tier: negative }
+- { q: "can I add my brother as a second user",                  tier: negative }
+- { q: "how do I export my sales into tally",                    tier: negative }
+- { q: "am I eligible for a working capital loan",               tier: negative }
+- { q: "can I ship orders to another city",                      tier: negative }
+- { q: "how do I change the app language to tamil",              tier: negative }
+- { q: "what is the coin to rupee conversion rate",              tier: negative }
+- { q: "how many times can I resubmit my documents",             tier: negative }
+
+# ══════════════════════════════════════════════════════════════════════════
+# Documents ported from content/product-knowledge (the original 28) and
+# rewritten to Document Contract v2. Same rules as above: no query repeats a
+# heading or a "Frequently asked as" line, and nothing was added to a document
+# because a query here failed.
+# ══════════════════════════════════════════════════════════════════════════
+
+# ── easy: the subject of the document, in merchant words ──────────────────
+- { q: "I want to give two plates for the price of one",       expect: "Creating a Deal",                          tier: easy }
+- { q: "I want to take 15 percent off every bill",             expect: "Creating a Discount",                      tier: easy }
+- { q: "should I cut the price or give something extra",       expect: "Deals and Discounts — the Difference",      tier: easy }
+- { q: "my offer is live but nobody is getting it",            expect: "Why Your Offer Is Not Showing or Applying", tier: easy }
+- { q: "what does it mean when an offer says scheduled",       expect: "Offer Status and Validity",                 tier: easy }
+- { q: "I only want regulars to get this, not everyone",       expect: "Who Gets Your Offer, and How Often",        tier: easy }
+- { q: "explain how money reaches me when someone scans",      expect: "How You Get Paid",                          tier: easy }
+- { q: "the amount is showing but nothing came to my bank",    expect: "When Your Money Reaches Your Bank",         tier: easy }
+- { q: "I need last month's earnings for my accountant",       expect: "Looking at Your Payment History",           tier: easy }
+- { q: "can I pay to be shown to more people",                 expect: "What Promotions Are",                       tier: easy }
+- { q: "I paid for an ad, what happens now",                   expect: "Running a Promotion Campaign",              tier: easy }
+- { q: "why is the advertising total more than what it said",  expect: "What a Promotion Costs",                    tier: easy }
+- { q: "what sits behind the code customers scan",             expect: "Your UPI QR Code",                          tier: easy }
+- { q: "I want takings to go to a different account now",      expect: "Managing More Than One QR Code",            tier: easy }
+- { q: "what is the money inside lesspay used for",            expect: "Credits and Your Wallet",                   tier: easy }
+- { q: "my balance went down and I did not buy anything",      expect: "When Credits Expire",                       tier: easy }
+- { q: "I told a shopkeeper about lesspay, do I get anything", expect: "Referring Other Shops",                     tier: easy }
+- { q: "the wrong business name is on my page",                expect: "Your Shop Name, Category and Address",      tier: easy }
+- { q: "how do people searching for samosa find me",           expect: "Service Modes, Keywords and Facilities",    tier: easy }
+- { q: "customers should see what my shop looks like",         expect: "Photos on Your Shop Page",                  tier: easy }
+- { q: "what do I get if I pay monthly",                       expect: "Packages and Programs",                     tier: easy }
+- { q: "why was I billed more than the plan price",            expect: "What You Pay for a Package",                tier: easy }
+- { q: "explain this whole thing to me, I just joined",        expect: "What LessPay Does for Your Shop",           tier: easy }
+- { q: "are you able to do things for me or only talk",        expect: "What Chotu Can Do for You",                 tier: easy }
+
+# ── medium: asked sideways, Roman Hinglish and Devanagari ─────────────────
+- { q: "do samose ke saath ek free dena hai",                  expect: "Creating a Deal",                          tier: medium }
+- { q: "बिल पर बीस प्रतिशत कम करना है",                          expect: "Creating a Discount",                      tier: medium }
+- { q: "customer ko chhoot dun ya extra saman dun",            expect: "Deals and Discounts — the Difference",      tier: medium }
+- { q: "offer chalu hai phir bhi customer ko nahi mil raha",   expect: "Why Your Offer Is Not Showing or Applying", tier: medium }
+- { q: "ऑफर की तारीख खत्म हो गई अब क्या",                        expect: "Offer Status and Validity",                 tier: medium }
+- { q: "ek aadmi kitni baar mera offer le sakta hai",          expect: "Who Gets Your Offer, and How Often",        tier: medium }
+- { q: "scan karne par paisa kahan jata hai",                  expect: "How You Get Paid",                          tier: medium }
+- { q: "बैंक में पैसा अभी तक नहीं आया",                           expect: "When Your Money Reaches Your Bank",         tier: medium }
+- { q: "pichhle hafte ka pura hisaab chahiye",                 expect: "Looking at Your Payment History",           tier: medium }
+- { q: "paisa dekar zyada logon tak kaise pahunchun",          expect: "What Promotions Are",                       tier: medium }
+- { q: "विज्ञापन का पैसा कट गया लेकिन चालू नहीं हुआ",              expect: "Running a Promotion Campaign",              tier: medium }
+- { q: "prachar mein gst bhi lagta hai kya",                   expect: "What a Promotion Costs",                    tier: medium }
+- { q: "meri upi id galat bata raha hai",                      expect: "Your UPI QR Code",                          tier: medium }
+- { q: "purana scanner hatana hai naya lagana hai",            expect: "Managing More Than One QR Code",            tier: medium }
+- { q: "वॉलेट में दो अलग हिस्से क्यों दिख रहे हैं",                 expect: "Credits and Your Wallet",                   tier: medium }
+- { q: "inaam wala paisa kab tak chalega",                     expect: "When Credits Expire",                       tier: medium }
+- { q: "kisi aur dukaandar ko jodne par kya milta hai",        expect: "Referring Other Shops",                     tier: medium }
+- { q: "दुकान का पता बदलना है",                                 expect: "Your Shop Name, Category and Address",      tier: medium }
+- { q: "ghar tak saman bhejna chalu karna hai",                expect: "Service Modes, Keywords and Facilities",    tier: medium }
+- { q: "menu ki tasveer kaise dikhegi grahak ko",              expect: "Photos on Your Shop Page",                  tier: medium }
+- { q: "मासिक योजना में क्या क्या मिलता है",                      expect: "Packages and Programs",                     tier: medium }
+- { q: "jama paisa wapas milta hai ya nahi",                   expect: "What You Pay for a Package",                tier: medium }
+
+# ── procedural: the failure class, one per newly ported guide ─────────────
+- { q: "offer kaise banau, step by step bataio",               expect: "Creating a Deal",                          tier: procedural }
+- { q: "chhoot lagane ka pura tarika batao",                   expect: "Creating a Discount",                      tier: procedural }
+- { q: "do tareekh ke beech ka hisaab kaise nikalein",         expect: "Looking at Your Payment History",           tier: procedural }
+- { q: "vigyapan shuru karne ka process step by step",         expect: "Running a Promotion Campaign",              tier: procedural }
+- { q: "naya upi jodne ka tarika step by step",                expect: "Managing More Than One QR Code",            tier: procedural }
+- { q: "kisi dukaan ko refer karne ka pura tarika",            expect: "Referring Other Shops",                     tier: procedural }
+- { q: "dukaan ka naam badalne ka process kya hai",            expect: "Your Shop Name, Category and Address",      tier: procedural }
+- { q: "photo lagane ka tarika step by step batao",            expect: "Photos on Your Shop Page",                  tier: procedural }
+- { q: "keyword jodne ka pura process bataiye",                expect: "Service Modes, Keywords and Facilities",    tier: procedural }
+
+# ── entity: rare literals a dense vector averages away ────────────────────
+- { q: "why is the UTR blank on my transfer",                  expect: "When Your Money Reaches Your Bank",         tier: entity }
+- { q: "what is a VPA",                                        expect: "Your UPI QR Code",                          tier: entity }
+- { q: "is GST added on top of a refundable deposit",          expect: "What You Pay for a Package",                tier: entity }
+- { q: "which screens ask for MPIN",                           expect: "Your PIN and What It Authorises",           tier: entity }
+- { q: "set up a BOGO",                                        expect: "Creating a Deal",                          tier: entity }
+- { q: "three pastries for 150 rupees together",               expect: "Creating a Deal",                          tier: entity }
+- { q: "what does Awaiting payment mean on a campaign",        expect: "Running a Promotion Campaign",              tier: entity }
+- { q: "difference between Lapsed and Loyal customers",        expect: "Who Gets Your Offer, and How Often",        tier: entity }
+
+# ── confusable: close to a named near-neighbour ───────────────────────────
+- { q: "customer ko kam paisa dena padega ya zyada saman milega", expect: "Deals and Discounts — the Difference", not_expect: "Creating a Deal",                     tier: confusable }
+- { q: "do the coins a customer spends come out of my credits",   expect: "Credits and Your Wallet",              not_expect: "Coins and Credits — Who Holds What",   tier: confusable }
+- { q: "is running an offer free or does it cost me",             expect: "What Promotions Are",                  not_expect: "What a Promotion Costs",               tier: confusable }
+- { q: "customer ne paisa de diya lekin mere khate mein nahi aaya", expect: "When Your Money Reaches Your Bank",   not_expect: "How You Get Paid",                     tier: confusable }
+- { q: "I referred a customer not a shop, where is my reward",    expect: "How Referral Rewards Are Earned",      not_expect: "Referring Other Shops",                tier: confusable }
+- { q: "is a monthly plan the same as a tablet program",          expect: "Packages and Programs",                not_expect: "What the Champion Program Is",         tier: confusable }
+- { q: "can I keep two scanners running at the same time",        expect: "Managing More Than One QR Code",       not_expect: "Your UPI QR Code",                     tier: confusable }
+- { q: "why did only one of my two offers apply",                 expect: "Who Gets Your Offer, and How Often",   not_expect: "Why Your Offer Is Not Showing or Applying", tier: confusable }
+- { q: "my listing is not coming up in the customer app",         expect: "How Customers Discover You",           not_expect: "Why Your Offer Is Not Showing or Applying", tier: confusable }
+- { q: "kya chotu mere liye khud offer bana dega",                expect: "What Chotu Can Do for You",            not_expect: "Creating a Deal",                      tier: confusable }

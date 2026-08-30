@@ -18,6 +18,7 @@ Two things follow from that rule:
 import logging
 import re
 from dataclasses import dataclass
+from datetime import date
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -612,3 +613,165 @@ def chunk_tool_card(
         f"Tool card '{api_id}' indexed as 1 card + {len(chunks) - 1} utterances."
     )
     return chunks
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Document Contract v2
+# ────────────────────────────────────────────────────────────────────────────
+#
+# CONTENT_GUIDE.md gives principles and no required shape, and the gap between
+# those two is measurable. One guide had a numbered procedure and another did
+# not, so "offer kaise banau, step by step bataio" matched
+# 'How You Get Paid > The payment, step by step' and refused — retrieval did the
+# right thing with the corpus it was given.
+#
+# A rule here rather than in a checklist, because the last three below are the
+# ones that silently degrade retrieval and that no human reviewer catches.
+
+TEXT_DOC_REQUIRED = ("title", "type", "status", "audience", "owner", "review_by")
+TEXT_DOC_TYPES = {"concept", "guide", "troubleshooting", "policy", "boundary"}
+
+MIN_ANSWERS = 3
+MIN_PHRASINGS = 5
+MIN_DEVANAGARI_PHRASINGS = 2
+MIN_STEPS = 3
+MIN_HINGLISH_CHARS = 100
+MIN_SECTION_CHARS = 100
+
+HINGLISH_HEADING = "Hinglish mein"
+PHRASINGS_HEADING = "Frequently asked as"
+
+_DEVANAGARI = re.compile(r"[\u0900-\u097F]")
+_NUMBERED_STEP = re.compile(r"^\s*\d+\.\s+\S", re.M)
+_POSITIONAL = re.compile(
+    r"\b(as (mentioned|described|shown) (above|below)"
+    r"|see (above|below)"
+    r"|the (section|table|list) (above|below)"
+    r"|as mentioned earlier"
+    r"|see the previous)\b",
+    re.I,
+)
+_FAILURE_HEADING = re.compile(
+    r"what if|not work|does not|doesn't|goes wrong|will not|won't|fail|"
+    r"not showing|missing|wrong|cannot|has not",
+    re.I,
+)
+
+
+def _sections(body: str) -> list[tuple[str, str]]:
+    """Every `## ` section as (heading, text-including-heading)."""
+    parts = re.split(r"^## ", body, flags=re.M)[1:]
+    return [(p.split("\n", 1)[0].strip(), "## " + p.rstrip()) for p in parts]
+
+
+def validate_text_document(meta: dict, body: str, max_size: int | None = None) -> list[str]:
+    """
+    Everything wrong with a prose document, in one pass.
+
+    Same contract as validate_tool_card: a list of problems rather than raising
+    on the first, because an author fixing a document wants to see all of them
+    at once. An empty list means the document is usable.
+    """
+    problems: list[str] = []
+    meta = meta or {}
+    body = body or ""
+    limit = max_size if max_size is not None else settings.chunk_size
+
+    for key in TEXT_DOC_REQUIRED:
+        if not str(meta.get(key) or "").strip():
+            problems.append(f"'{key}' is missing from the front matter.")
+
+    doc_type = str(meta.get("type") or "").strip().lower()
+    if doc_type and doc_type not in TEXT_DOC_TYPES:
+        problems.append(
+            f"type '{doc_type}' is not one of {', '.join(sorted(TEXT_DOC_TYPES))}."
+        )
+
+    answers = meta.get("answers")
+    if not isinstance(answers, list) or len(answers) < MIN_ANSWERS:
+        problems.append(
+            f"'answers' needs at least {MIN_ANSWERS} questions this document is "
+            f"the owner of. They are what makes its scope legible to a reader of "
+            f"eight chunks."
+        )
+
+    review_by = str(meta.get("review_by") or "").strip()
+    if review_by:
+        try:
+            if date.fromisoformat(review_by) <= date.today():
+                problems.append(
+                    f"review_by {review_by} is not in the future. Stale content is "
+                    f"worse than missing content, because it is confidently wrong."
+                )
+        except ValueError:
+            problems.append(f"review_by '{review_by}' is not a YYYY-MM-DD date.")
+
+    headings = [h for h, _ in _sections(body)]
+
+    if HINGLISH_HEADING not in headings:
+        problems.append(f"No '## {HINGLISH_HEADING}' section.")
+    else:
+        block = next(t for h, t in _sections(body) if h == HINGLISH_HEADING)
+        if len(block) < MIN_HINGLISH_CHARS:
+            problems.append(
+                f"'## {HINGLISH_HEADING}' is {len(block)} characters. It needs at "
+                f"least {MIN_HINGLISH_CHARS} — it has to be a real answer a "
+                f"Hinglish query can win, not a label."
+            )
+
+    if PHRASINGS_HEADING not in headings:
+        problems.append(f"No '## {PHRASINGS_HEADING}' section.")
+    else:
+        block = next(t for h, t in _sections(body) if h == PHRASINGS_HEADING)
+        lines = [l for l in block.splitlines() if l.strip().startswith("- ")]
+        if len(lines) < MIN_PHRASINGS:
+            problems.append(
+                f"'## {PHRASINGS_HEADING}' has {len(lines)} phrasings, needs "
+                f"{MIN_PHRASINGS}."
+            )
+        devanagari = sum(1 for l in lines if _DEVANAGARI.search(l))
+        if devanagari < MIN_DEVANAGARI_PHRASINGS:
+            problems.append(
+                f"'## {PHRASINGS_HEADING}' has {devanagari} phrasing(s) in "
+                f"Devanagari, needs {MIN_DEVANAGARI_PHRASINGS}. Typed input "
+                f"arrives in Roman; speech-to-text arrives in Devanagari, and "
+                f"both are live traffic."
+            )
+
+    if doc_type == "guide":
+        steps = _NUMBERED_STEP.findall(body)
+        if len(steps) < MIN_STEPS:
+            problems.append(
+                f"A guide needs a numbered procedure of at least {MIN_STEPS} "
+                f"steps; found {len(steps)}. A guide with no numbered steps "
+                f"cannot be retrieved by a procedural question."
+            )
+
+    if doc_type in ("guide", "troubleshooting"):
+        if not any(_FAILURE_HEADING.search(h) for h in headings):
+            problems.append(
+                "No section covering what happens when it goes wrong. Half of "
+                "what merchants ask arrives as a complaint."
+            )
+
+    hit = _POSITIONAL.search(body)
+    if hit:
+        problems.append(
+            f"Positional reference {hit.group(0)!r}. A chunk is read alone, so it "
+            f"points at something the reader cannot see."
+        )
+
+    for heading, text in _sections(body):
+        if len(text) < MIN_SECTION_CHARS:
+            problems.append(
+                f"Section '{heading}' is {len(text)} characters. Merge it upwards "
+                f"— on its own it retrieves as a fragment."
+            )
+        if len(text) > limit:
+            problems.append(
+                f"Section '{heading}' is {len(text)} characters, over the {limit} "
+                f"chunk size. Split it yourself rather than letting the chunker "
+                f"choose the break."
+            )
+
+    return problems

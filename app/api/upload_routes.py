@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.api.deps import KbContext, kb_db, resolve_kb
 from app.api.schemas import DocumentResponse, ErrorResponse
 from app.services import knowledge_service
+from app.services.chunking_service import TEXT_DOC_TYPES, validate_text_document
 from app.services.extraction_service import (
     SUPPORTED_EXTENSIONS,
     extract,
@@ -56,6 +57,12 @@ async def upload_document(
     doc_type: str | None = Form(
         None,
         description="Chunking strategy. Inferred from the file type when omitted.",
+    ),
+    enforce_contract: bool = Form(
+        True,
+        description="Check the document against the authoring contract and refuse "
+                    "it if it fails. Set false to load content that predates the "
+                    "contract; the document is stored exactly as given either way.",
     ),
     context: KbContext = Depends(resolve_kb),
     db: AsyncSession = Depends(kb_db),
@@ -130,6 +137,31 @@ async def upload_document(
             **(parsed_metadata or {}),
             "source": "file_upload",
         }
+
+        # The contract is checked HERE, at the only door into the knowledge
+        # base, rather than in a script an author is trusted to have run. A
+        # document that fails is refused whole: it is cheaper to fix front
+        # matter than to discover months later that a guide has no numbered
+        # steps and cannot be retrieved by a procedural question.
+        #
+        # Only prose types are checked. Tool cards have their own validator and
+        # a JSON upload is not a document anyone authored to this contract.
+        if enforce_contract and effective_doc_type in TEXT_DOC_TYPES:
+            problems = validate_text_document(
+                {**doc_metadata, "title": effective_title,
+                 "type": effective_doc_type},
+                extraction.text,
+                max_size=context.profile.chunk_size,
+            )
+            if problems:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "message": f"'{effective_title}' does not meet the authoring "
+                                   f"contract, so it was not stored.",
+                        "problems": problems,
+                    },
+                )
 
         document, chunk_count = await knowledge_service.add_document(
             db=db,

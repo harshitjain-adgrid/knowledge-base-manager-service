@@ -35,7 +35,8 @@ import yaml
 import selection
 
 HERE = pathlib.Path(__file__).parent
-TIERS = ["easy", "medium", "confusable", "negative"]
+TIERS = ("easy", "medium", "procedural", "entity", "confusable", "negative",
+         "boundary")
 
 
 # ── transport ────────────────────────────────────────────────────────────────
@@ -72,27 +73,49 @@ class Tally:
     def __init__(self):
         self.rows = []
 
-    def add(self, tier, passed, detail):
-        self.rows.append((tier, passed, detail))
+    def add(self, tier, passed, detail, rank=None):
+        # rank is where the expected document actually landed: 1 means it was
+        # read first, None means it never appeared, and it is meaningless for a
+        # negative case that expects nothing. Recorded separately from `passed`
+        # because recall@5 and recall@1 disagree exactly where it matters — an
+        # ordering failure passes the first and fails the second, and the
+        # assistant answers from what it reads first.
+        self.rows.append((tier, passed, detail, rank))
 
     def report(self, title, show_failures=True):
         print(f"\n{'=' * 74}\n{title}\n{'=' * 74}")
-        overall_pass = sum(1 for _, ok, _ in self.rows if ok)
+        overall_pass = sum(1 for _, ok, _, _ in self.rows if ok)
 
+        print(f"  {'tier':<12} {'recall@k':>10}   {'recall@1':>8}")
         for tier in TIERS:
             rows = [r for r in self.rows if r[0] == tier]
             if not rows:
                 continue
-            passed = sum(1 for _, ok, _ in rows if ok)
-            bar = "█" * round(20 * passed / len(rows))
-            print(f"  {tier:<12} {passed:>3}/{len(rows):<3} "
-                  f"{100 * passed / len(rows):>5.1f}%  {bar}")
+            passed = sum(1 for _, ok, _, _ in rows if ok)
+            bar = "█" * round(16 * passed / len(rows))
+            # A negative case expects no document, so there is no rank to be
+            # first at. Printed as "--" rather than 0% or 100%, either of which
+            # would be a claim about ordering that this tier cannot make.
+            at_one = sum(1 for r in rows if r[3] == 1)
+            r1 = "--" if tier == "negative" else \
+                 f"{100 * at_one / len(rows):>5.1f}%"
+            print(f"  {tier:<12} {passed:>3}/{len(rows):<3}"
+                  f"{100 * passed / len(rows):>5.1f}%   {r1:>8}  {bar}")
 
-        print(f"  {'overall':<12} {overall_pass:>3}/{len(self.rows):<3} "
+        positives = [r for r in self.rows if r[0] != "negative"]
+        if positives:
+            first = sum(1 for r in positives if r[3] == 1)
+            hit = sum(1 for r in positives if r[1])
+            print(f"  {'-' * 46}")
+            print(f"  {'positives':<12} {hit:>3}/{len(positives):<3}"
+                  f"{100 * hit / len(positives):>5.1f}%   "
+                  f"{100 * first / len(positives):>5.1f}%   <- retrieval")
+
+        print(f"  {'overall':<12} {overall_pass:>3}/{len(self.rows):<3}"
               f"{100 * overall_pass / len(self.rows):>5.1f}%")
 
         if show_failures:
-            failures = [(t, d) for t, ok, d in self.rows if not ok]
+            failures = [(t, d) for t, ok, d, _ in self.rows if not ok]
             if failures:
                 print(f"\n  {len(failures)} failing:")
                 for tier, detail in failures:
@@ -157,8 +180,9 @@ def eval_actions(base, token, kb, top_k, overrides=None, quiet=False):
 
 # ── product knowledge ────────────────────────────────────────────────────────
 
-def eval_product(base, token, kb, top_k, min_score):
-    cases = yaml.safe_load((HERE / "product_queries.yaml").read_text(encoding="utf-8"))["queries"]
+def eval_product(base, token, kb, top_k, min_score, queries="product_queries.yaml",
+                 label="PRODUCT KNOWLEDGE"):
+    cases = yaml.safe_load((HERE / queries).read_text(encoding="utf-8"))["queries"]
     tally = Tally()
 
     for case in cases:
@@ -172,6 +196,7 @@ def eval_product(base, token, kb, top_k, min_score):
         titles = [h["document_title"] for h in hits]
         best = hits[0]["similarity"] if hits else 0.0
         expected = case.get("expect")
+        rank = None
 
         if expected is None:
             # Nothing covers it. Passing means the best match is weak enough
@@ -198,9 +223,9 @@ def eval_product(base, token, kb, top_k, min_score):
                     detail = (f"{case['q']!r} -> {rival!r} at rank {rival_rank} "
                               f"beat {expected!r} at rank {rank}")
 
-        tally.add(case["tier"], passed, detail)
+        tally.add(case["tier"], passed, detail, rank)
 
-    return tally.report(f"PRODUCT KNOWLEDGE  (recall@{top_k})")
+    return tally.report(f"{label}  (recall@{top_k} and recall@1)")
 
 
 # ── threshold sweep ──────────────────────────────────────────────────────────
@@ -300,19 +325,29 @@ def main():
     parser.add_argument("--base", default="http://127.0.0.1:8000")
     parser.add_argument("--user", default="admin")
     parser.add_argument("--password", default=os.environ.get("CHOTU_PASSWORD"))
+    # Without this the runner falls back to getpass, which blocks forever when
+    # stdin is not a terminal -- a scripted or CI run hangs silently rather than
+    # failing. load_seeds.py already accepts the same key.
+    parser.add_argument("--token", default=os.environ.get("ADMIN_API_KEY"),
+                        help="Machine key, used instead of signing in.")
     parser.add_argument("--product-kb", default="product-knowledge")
     parser.add_argument("--api-kb", default="api-catalog")
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--product-floor", type=float, default=0.70,
                         help="Below this a product answer is treated as 'I don't know'.")
-    parser.add_argument("--only", choices=["product", "action"])
+    parser.add_argument("--only", choices=["product", "action", "product-v2"])
+    parser.add_argument("--v2-kb", default="product-knowledge-v2",
+                        help="The Contract v2 knowledge base.")
     parser.add_argument("--sweep", action="store_true",
                         help="Try threshold combinations instead of scoring one.")
     args = parser.parse_args()
 
     base = args.base.rstrip("/")
-    password = args.password or getpass.getpass(f"Password for {args.user}: ")
-    token = sign_in(base, args.user, password)
+    if args.token:
+        token = args.token
+    else:
+        password = args.password or getpass.getpass(f"Password for {args.user}: ")
+        token = sign_in(base, args.user, password)
 
     started = time.time()
 
@@ -321,10 +356,15 @@ def main():
         return
 
     results = []
-    if args.only != "action":
+    if args.only is None or args.only == "product":
         results.append(eval_product(base, token, args.product_kb,
                                     args.top_k, args.product_floor))
-    if args.only != "product":
+    if args.only is None or args.only == "product-v2":
+        results.append(eval_product(base, token, args.v2_kb,
+                                    args.top_k, args.product_floor,
+                                    queries="product_v2_queries.yaml",
+                                    label="PRODUCT KNOWLEDGE v2"))
+    if args.only is None or args.only == "action":
         results.append(eval_actions(base, token, args.api_kb, args.top_k))
 
     passed = sum(p for p, _ in results)

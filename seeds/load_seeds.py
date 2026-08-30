@@ -175,8 +175,23 @@ def existing_titles(client: Client, kb: str) -> dict:
 
 
 def title_of(path: pathlib.Path) -> str | None:
-    """The title out of a markdown file's front matter, if it has one."""
-    for line in path.read_text(encoding="utf-8").splitlines()[1:20]:
+    """
+    The title out of a markdown file's front matter, if it has one.
+
+    Scans to the closing `---` rather than a fixed number of lines. Stopping at
+    line 20 silently returned None for any card whose front matter runs longer
+    than that, and a card that explains its own decisions in comments easily
+    does. The cost was not a missing title. It was a DUPLICATE document: the
+    caller uses this to find the existing copy to delete, so a None meant the
+    old card stayed and a second one was uploaded beside it, both matching the
+    same utterances.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0].strip() != "---":
+        return None
+    for line in lines[1:]:
+        if line.strip() == "---":
+            return None                      # front matter ended without one
         if line.lower().startswith("title:"):
             return line.split(":", 1)[1].strip().strip('"')
     return None

@@ -311,6 +311,33 @@ async def chunk_counts_for(
     return {doc_id: counts.get(doc_id, 0) for doc_id in document_ids}
 
 
+# A document is served unless it declares that it should not be. Two front
+# matter fields say so, and both are required and validated by Document
+# Contract v2: `status` -- anything other than published is not ready to be
+# read by a merchant -- and `audience`, where internal notes are for the team.
+#
+# Until this filter existed nothing read either field. A document marked
+# `status: draft` or `audience: internal` was embedded, retrievable, and would
+# have been quoted back to a merchant. The authoring guide promised the
+# opposite in prose and no code enforced it.
+#
+# Absent means servable, deliberately. Documents written before the contract
+# carry neither field, and defaulting those to withheld would silently empty an
+# existing index on deploy. Withholding is an explicit act by an author.
+SERVED_STATUS = "published"
+WITHHELD_AUDIENCE = "internal"
+
+
+def _servable_only(query, KnowledgeDocument):
+    """Restrict a query to documents an outside reader is allowed to see."""
+    status = KnowledgeDocument.metadata_["status"].astext
+    audience = KnowledgeDocument.metadata_["audience"].astext
+    return query.where(
+        or_(status.is_(None), func.lower(status) == SERVED_STATUS),
+        or_(audience.is_(None), func.lower(audience) != WITHHELD_AUDIENCE),
+    )
+
+
 async def search_similar(
     db: AsyncSession,
     query_embedding: list[float],
@@ -318,12 +345,17 @@ async def search_similar(
     top_k: int = 5,
     doc_type: str | None = None,
     folder: str | None = None,
+    include_withheld: bool = False,
 ) -> list[dict]:
     """
     Perform a vector similarity search against stored chunks.
 
     Returns the top_k most similar chunks with their similarity scores
     and parent document info.
+
+    Drafts and internal documents are excluded unless `include_withheld` is
+    set, which exists for the admin UI: an author has to be able to find the
+    draft they are working on.
     """
     profile = profile or default_profile()
     KnowledgeDocument, KnowledgeChunk = profile.tables
@@ -351,6 +383,9 @@ async def search_similar(
         query = query.where(
             KnowledgeDocument.folder_path == normalize_folder_path(folder)
         )
+
+    if not include_withheld:
+        query = _servable_only(query, KnowledgeDocument)
 
     result = await db.execute(query)
     rows = result.all()
