@@ -37,11 +37,37 @@ fields:
     required: true
     prompt: "What should the deal be called?"
     example: Buy 1 Get 1 Coffee
+  # The discriminator. `config` below holds a different set of keys for each of
+  # these, so getting this wrong does not just mislabel the deal — it changes
+  # which questions the merchant is asked.
+  #
+  # The three constants read as plain English and two of them mislead. Anything
+  # given away sounds like a "free item", and picking FREE_ITEM on that reading
+  # is what asked a merchant for a bill amount they never had in mind. What
+  # separates these is the CONDITION that unlocks the reward, not whether
+  # something is free — so each value says its own condition, next to itself,
+  # rather than a paragraph about all three hanging off the field.
+  #
+  # The wording follows the deal-type screen in LessPay Business, so a merchant
+  # reading the app and Chotu reading this card are working from one definition.
   - name: offerType
     type: enum
     required: true
-    prompt: "Is it buy-one-get-one, a bundle, or a free item?"
-    values: [BOGO, BUNDLE_DEAL, FREE_ITEM]
+    prompt: "Is it buy-X-get-Y free, N items at one fixed price, or a free item on bills above an amount?"
+    values:
+      - value: BOGO
+        means: >-
+          Buy one item, get another free or discounted. Buying a quantity of an
+          item is what earns the reward, and the free thing may be that same
+          product or a different one.
+      - value: BUNDLE_DEAL
+        means: >-
+          N items at one fixed price. Several items are sold together for a
+          single amount, rather than anything being given away.
+      - value: FREE_ITEM
+        means: >-
+          Free X on bills above ₹Y. The bill reaching an amount is what unlocks
+          the free item; if no bill threshold was mentioned, this is not it.
 
   # `config` is one object in the request, but it is asked for as separate
   # questions. Slot extraction types every field as a scalar, so a field of
@@ -49,47 +75,66 @@ fields:
   # the config object" is not a question a shopkeeper can answer. The dotted
   # names are rebuilt into { "config": { ... } } at request time.
   #
-  # Which of these the API demands depends on offerType, and it says which one
-  # is missing in plain words, so the ones that do not apply are simply never
-  # sent.
+  # `config` holds different keys for each offerType, so each field below says
+  # which shape it belongs to. Without that every field of every shape counts
+  # as required at once, and a merchant describing a bundle is asked about
+  # buy-one-get-one quantities that will never be sent.
   - name: config.appliesOn
     type: enum
     required: true
+    required_when: {offerType: [BOGO]}
     prompt: "Is the free item the same thing they bought, or anything in the shop?"
-    values: [SAME_ITEM, ANY_ITEM]
+    values:
+      - value: SAME_ITEM
+        means: They get more of the very thing they bought.
+      - value: ANY_ITEM
+        means: >-
+          The free item is a different product from the one bought. Two
+          different products being named settles this on its own.
   - name: config.buyItemName
     type: string
     required: true
+    required_when: {offerType: [BOGO]}
     prompt: "Which item do they have to buy?"
     example: Coffee
   - name: config.buyQty
     type: integer
     required: true
+    required_when: {offerType: [BOGO]}
     prompt: "How many do they buy?"
     example: 1
   - name: config.getQty
     type: integer
     required: true
+    required_when: {offerType: [BOGO]}
     prompt: "How many do they get free?"
     example: 1
+  # Wanted by two different shapes: a free-item offer always names it, and a
+  # buy-one-get-one only when the free thing is a different product.
   - name: config.freeItemName
     type: string
-    required: false
+    required: true
+    required_when:
+      - {offerType: [FREE_ITEM]}
+      - {offerType: [BOGO], config.appliesOn: [ANY_ITEM]}
     prompt: "Which item is free?"
     example: Gulab Jamun
   - name: config.onBillsAbove
     type: integer
-    required: false
+    required: true
+    required_when: {offerType: [FREE_ITEM]}
     prompt: "Above what bill amount does the free item apply?"
     example: 500
   - name: config.bundleSize
     type: integer
-    required: false
+    required: true
+    required_when: {offerType: [BUNDLE_DEAL]}
     prompt: "How many items are in the bundle?"
     example: 3
   - name: config.bundlePrice
     type: integer
-    required: false
+    required: true
+    required_when: {offerType: [BUNDLE_DEAL]}
     prompt: "What is the price for the whole bundle?"
     example: 150
 
@@ -161,6 +206,42 @@ fields:
     type: boolean
     required: false
     prompt: "Should it run for a fixed period, or until you switch it off?"
+
+# What a merchant said, and what it fills in. Four of them, each carrying a
+# boundary that describing a field does not teach on its own: which offer type
+# a giveaway with no bill threshold is, that a free item of a DIFFERENT product
+# is still a buy-one-get-one, and that quantities arrive as words as often as
+# digits -- "do" is two.
+#
+# Only what the merchant actually said is filled in. None of these gives a
+# title, because none of these merchants gave one, and an example that filled
+# one in would be teaching exactly the invention the extraction rules forbid.
+examples:
+  - says: "ek colgate pe do colgate ke brush free"
+    fields:
+      offerType: BOGO
+      config.appliesOn: ANY_ITEM
+      config.buyItemName: Colgate
+      config.buyQty: 1
+      config.getQty: 2
+      config.freeItemName: Colgate brush
+  - says: "500 se upar ke bill pe ek gulab jamun free"
+    fields:
+      offerType: FREE_ITEM
+      config.freeItemName: Gulab jamun
+      config.onBillsAbove: 500
+  - says: "तीन पेस्ट्री 150 रुपये में"
+    fields:
+      offerType: BUNDLE_DEAL
+      config.bundleSize: 3
+      config.bundlePrice: 150
+  - says: "buy 2 coffees get 1 coffee free"
+    fields:
+      offerType: BOGO
+      config.appliesOn: SAME_ITEM
+      config.buyItemName: Coffee
+      config.buyQty: 2
+      config.getQty: 1
 
 # The banner is generated once the deal is otherwise complete, and never
 # before. Generating one costs money and takes about thirty seconds, so it is

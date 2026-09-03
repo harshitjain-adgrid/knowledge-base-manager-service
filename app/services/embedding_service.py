@@ -433,6 +433,11 @@ def _normalize(vector: list[float]) -> list[float]:
 # fal.ai provider (OpenAI-compatible)
 # ────────────────────────────────────────────────────────────────────────────
 
+# What embedding has cost this process, taken from the provider's own usage
+# field rather than estimated from character counts. Reset by whoever reads it.
+EMBEDDING_USAGE: dict[str, int] = {"requests": 0, "texts": 0, "tokens": 0}
+
+
 async def _fal_embed(
     texts: list[str], role: str, config: EmbeddingConfig
 ) -> list[list[float]]:
@@ -458,6 +463,12 @@ async def _fal_embed(
             response = await client.post(FAL_EMBEDDINGS_URL, json=payload)
             response.raise_for_status()
             data = response.json()
+            usage = data.get("usage") or {}
+            EMBEDDING_USAGE["requests"] += 1
+            EMBEDDING_USAGE["texts"] += len(texts)
+            EMBEDDING_USAGE["tokens"] += int(
+                usage.get("total_tokens") or usage.get("prompt_tokens") or 0
+            )
             return [item["embedding"] for item in data["data"]]
         except Exception as e:
             if attempt == MAX_RETRIES:

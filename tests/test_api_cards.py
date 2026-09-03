@@ -219,3 +219,97 @@ def test_utterance_chunks_are_left_alone():
     # padding it would make it match like a description instead.
     chunks = chunk_tool_card("Body.", card(fields=FIELDS), "T", 4000)
     assert all("Needs:" not in c.content for c in chunks[1:])
+
+# ── Enum values that carry their own meaning ─────────────────────────────────
+#
+# A constant's name is a label, and a label can mislead: anything given away
+# reads as FREE_ITEM when FREE_ITEM is specifically the one unlocked by a bill
+# threshold. So a card may write a value bare, or as a mapping saying what it
+# means. Both shapes have to survive validation and chunking.
+
+def test_values_written_bare_are_accepted():
+    assert validate_tool_card(card(fields=[
+        {"name": "kind", "required": True, "prompt": "?",
+         "values": ["BOGO", "FREE_ITEM"]}])) == []
+
+
+def test_values_written_as_mappings_are_accepted():
+    assert validate_tool_card(card(fields=[
+        {"name": "kind", "required": True, "prompt": "?", "values": [
+            {"value": "BOGO", "means": "buying a quantity earns it"},
+            {"value": "FREE_ITEM", "means": "a bill threshold unlocks it"}]}
+    ])) == []
+
+
+def test_values_that_are_not_a_list_are_refused():
+    problems = validate_tool_card(card(fields=[
+        {"name": "kind", "required": True, "prompt": "?", "values": "BOGO"}]))
+    assert any("values" in p for p in problems)
+
+
+def test_a_value_entry_with_no_value_is_refused():
+    problems = validate_tool_card(card(fields=[
+        {"name": "kind", "required": True, "prompt": "?",
+         "values": [{"means": "orphaned"}]}]))
+    assert any("no 'value'" in p for p in problems)
+
+
+def test_a_described_value_is_still_spelled_out_in_the_chunk():
+    # The meanings are for the model that fills the field in. Only the names
+    # belong in a retrieval chunk -- a merchant's phrasing never matches a
+    # paragraph of API semantics.
+    described = _describe_fields([
+        {"name": "kind", "required": True, "values": [
+            {"value": "BOGO", "means": "buying a quantity earns it"}]}
+    ], required=True)
+    assert described == "kind (BOGO)"
+    assert "buying a quantity" not in described
+
+
+# ── Worked examples ──────────────────────────────────────────────────────────
+
+def example_card(**overrides):
+    return card(fields=[{"name": "kind", "required": True, "prompt": "?"}],
+                **overrides)
+
+
+def test_a_card_with_no_examples_is_fine():
+    assert validate_tool_card(example_card()) == []
+
+
+def test_a_well_formed_example_is_accepted():
+    assert validate_tool_card(example_card(
+        examples=[{"says": "ek ke saath ek free", "fields": {"kind": "BOGO"}}]
+    )) == []
+
+
+def test_an_example_with_no_words_is_refused():
+    problems = validate_tool_card(example_card(
+        examples=[{"fields": {"kind": "BOGO"}}]))
+    assert any("'says'" in p for p in problems)
+
+
+def test_an_example_that_fills_nothing_is_refused():
+    problems = validate_tool_card(example_card(examples=[{"says": "hello"}]))
+    assert any("'fields'" in p for p in problems)
+
+
+def test_an_example_filling_a_field_the_card_does_not_have_is_refused():
+    # An example naming a field that does not exist teaches the model a field
+    # that does not exist. Caught at upload rather than at request time.
+    problems = validate_tool_card(example_card(
+        examples=[{"says": "hello", "fields": {"nosuchfield": 1}}]))
+    assert any("nosuchfield" in p for p in problems)
+
+
+def test_examples_that_are_not_a_list_are_refused():
+    problems = validate_tool_card(example_card(examples={"says": "x"}))
+    assert any("examples" in p for p in problems)
+
+
+def test_every_bad_example_is_reported_at_once():
+    problems = validate_tool_card(example_card(examples=[
+        {"says": "no fields"},
+        {"fields": {"kind": "BOGO"}},
+    ]))
+    assert len(problems) == 2

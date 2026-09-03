@@ -119,7 +119,50 @@ as metadata you can filter on.
 If a file needs "and" in its title, it is two files. `Creating and Editing
 Offers` should be `Creating an Offer` and `Editing an Offer`.
 
-### 2. Every section must stand alone
+### 2. Draw the contrast where people confuse two things
+
+When two things in LessPay are easy to mix up, say so in a section whose
+heading starts with **Not this**:
+
+```markdown
+## Not this — credits are not a bank balance
+
+Credits are a **reward balance on your LessPay account** and they expire. The
+money customers pay you is different: it is real money, it settles to your bank
+account, and it does not expire. A large credit balance is not money you can
+withdraw.
+```
+
+This is ordinary content — it is retrieved and read out to merchants like any
+other section, and it is very often the *only* place the distinction is stated
+outright. "Can I withdraw my credits to my bank?" is answered by the section
+above and by nothing else in the knowledge base.
+
+So write it as an answer, not as a signpost:
+
+**Bad** — a pointer with nothing in it:
+
+```markdown
+## Not this — placement is not the offer
+
+For placement, see "Where Your Deal Appears".
+```
+
+**Good** — states both sides, then points:
+
+```markdown
+## Not this — placement is not the offer
+
+An **offer** — a deal or a discount — is the thing a customer receives, and it
+is free to run. **Placement** is where that offer is shown, and the better
+positions cost money. If your question is about what to give the customer
+rather than about who sees it, see the offers documentation instead.
+```
+
+A "Not this" section shorter than 150 characters is rejected on upload, because
+one that short is a signpost rather than an answer.
+
+### 3. Every section must stand alone
 
 This is the important one. A section is split off and read by itself.
 
@@ -140,12 +183,12 @@ A discount's validity uses the same fields as a deal: `startDate` and
 `endDate`, both ISO-8601, with `endDate` required when `isLimited` is true.
 ```
 
-### 3. Never write "above", "below", "as mentioned earlier", "see the previous section"
+### 4. Never write "above", "below", "as mentioned earlier", "see the previous section"
 
 There is no above or below. The reader sees one section. If you need to point at
 something, name it: *"see the Refund Timing document"*, not *"see below"*.
 
-### 4. Use headings for every real section
+### 5. Use headings for every real section
 
 Headings are where the document gets cut. A wall of text with no headings gets
 cut at arbitrary points, mid-sentence.
@@ -153,13 +196,13 @@ cut at arbitrary points, mid-sentence.
 Use `#` once for the document title, `##` for sections, `###` for subsections.
 Don't skip levels.
 
-### 5. Keep sections between roughly 100 and 1,200 characters
+### 6. Keep sections between roughly 100 and 1,200 characters
 
 Under ~100 characters usually means the section should be merged into its
 neighbour. Over ~1,200 means it will be split automatically — better that you
 choose the split point by adding a heading.
 
-### 6. Write in the merchant's words, not ours
+### 7. Write in the merchant's words, not ours
 
 The assistant matches the merchant's question against your text. If they say
 "scheme" and you only ever write "campaign", the match is weaker.
@@ -167,24 +210,24 @@ The assistant matches the merchant's question against your text. If they say
 Include the words real merchants use, including Hinglish. Where an internal term
 is unavoidable, gloss it once: *"An offer (internally: a campaign) is …"*
 
-### 7. Add a "Frequently asked as" section
+### 8. Add a "Frequently asked as" section
 
 List real phrasings, one per line, including misspellings and Hinglish. This is
 the single cheapest way to improve retrieval, because it matches question to
 question instead of question to prose.
 
-### 8. Cover the "what if"
+### 9. Cover the "what if"
 
 Most knowledge bases only document the happy path, and merchants mostly ask
 about the unhappy one. For every guide, add at least one *what if it goes wrong*
 section. Mine real support tickets for these.
 
-### 9. Tables need headers that explain themselves
+### 10. Tables need headers that explain themselves
 
 Column headers are repeated on every piece when a long table is split, so make
 them meaningful. `Field | Required | Notes` is good; `A | B | C` is not.
 
-### 10. Never put merchant data in the knowledge base
+### 11. Never put merchant data in the knowledge base
 
 No coupon lists, khata balances, transaction exports, phone numbers or customer
 names. Ever. That data belongs in the application database and is fetched live.

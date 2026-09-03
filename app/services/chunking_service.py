@@ -256,6 +256,76 @@ def _breadcrumb(doc_title: str | None, heading_stack: list[Block]) -> str:
     return " > ".join([*parts, *headings])
 
 
+_PHRASING_LINE = re.compile(r"^\s*[-*]\s+(.*\S)\s*$")
+
+# ── Chunk roles ────────────────────────────────────────────────────────────
+#
+# What a chunk is FOR. Decided here because this module owns the authoring
+# contract -- it defines the headings and validate_text_document enforces them
+# -- and written into the chunk's metadata so that every consumer reads a role
+# instead of re-deriving one from heading text it does not own.
+#
+# The alternative, which is what shipped before, is each consumer pattern
+# matching on headings. That is not a smaller version of this; it is a second
+# definition of the format living somewhere that cannot validate it, and it
+# drifts the moment an author writes a heading nobody anticipated.
+ROLE_PROSE = "prose"
+ROLE_SEARCH_TAG = "search_tag"
+ROLE_DISAMBIGUATION = "disambiguation"
+
+# A "Not this -- X is not Y" section. A convention in the corpus long before it
+# was written down anywhere, which is exactly why a consumer guessed at it and
+# guessed wrong.
+DISAMBIGUATION_PREFIX = "not this"
+
+
+def role_for_section(title: str | None) -> str:
+    """
+    What the section under `title` is for.
+
+    The only place in either service where a heading decides anything. Adding a
+    convention means adding it here, next to the validator that enforces it.
+    """
+    heading = (title or "").strip().lower()
+    if heading == PHRASINGS_HEADING.lower():
+        return ROLE_SEARCH_TAG
+    if heading.startswith(DISAMBIGUATION_PREFIX):
+        return ROLE_DISAMBIGUATION
+    return ROLE_PROSE
+
+
+def _in_phrasings(stack: list[Block]) -> bool:
+    """Is the current section the invisible search-tag list?"""
+    if not stack:
+        return False
+    return role_for_section(stack[-1].title) == ROLE_SEARCH_TAG
+
+
+def _phrasing_lines(text: str) -> list[str]:
+    """
+    The bare questions in a phrasings block, one per line.
+
+    Bullet markers and the surrounding quotes come off: what should be embedded
+    is the question a merchant would actually type. A line that is not a list
+    item is ignored rather than guessed at -- an author's note above the list is
+    not a search tag, and embedding it would put a vector into the index that
+    points at nothing anybody will ask.
+    """
+    out: list[str] = []
+    for raw in text.split("\n"):
+        m = _PHRASING_LINE.match(raw)
+        if not m:
+            continue
+        line = m.group(1).strip()
+        if len(line) >= 2 and line[0] == line[-1] and line[0] in "\"'\u201c\u201d":
+            line = line[1:-1].strip()
+        elif len(line) >= 2 and line[0] == "\u201c" and line[-1] == "\u201d":
+            line = line[1:-1].strip()
+        if line:
+            out.append(line)
+    return out
+
+
 def chunk_text_document(
     content: str,
     doc_metadata: dict | None = None,
@@ -288,17 +358,27 @@ def chunk_text_document(
     # labelled with the section it belongs to rather than one we have moved on to
     buffer_stack: list[Block] = []
 
-    def emit(body: str, stack: list[Block], part: int | None = None) -> None:
+    def emit(body: str, stack: list[Block], part: int | None = None,
+             breadcrumb: bool = True) -> None:
         # Strip blank lines, not indentation — leading spaces are meaningful in
         # code and YAML, and stripping them corrupts a split code block.
         body = body.strip("\n").rstrip()
         if not body.strip():
             return
-        crumb = _breadcrumb(doc_title, stack)
+        # A search tag carries no breadcrumb. Every other chunk gets one because
+        # retrieval hands that exact text to the assistant, so it has to read in
+        # isolation. A tag is never read -- it exists to be matched and is always
+        # promoted away -- and a constant 60-character prefix on a 40-character
+        # question dilutes the only thing the vector is supposed to encode.
+        crumb = _breadcrumb(doc_title, stack) if breadcrumb else ""
         content_out = f"{crumb}\n\n{body}" if crumb else body
         meta = {
             **(doc_metadata or {}),
+            # What the chunk was extracted FROM, unchanged: prose, a table, a
+            # tool card. Orthogonal to what it is for.
             "chunk_type": "text",
+            # What it is for. The only thing a consumer should branch on.
+            "chunk_role": role_for_section(stack[-1].title if stack else None),
             "heading_path": [h.title for h in stack if h.title],
         }
         if stack:
@@ -325,6 +405,18 @@ def chunk_text_document(
             heading_stack.append(block)
             buffer_stack = list(heading_stack)
             continue
+
+        # Multi-vector indexing. One vector per phrasing rather than one for
+        # the whole list: a merchant asks one question, and it should match one
+        # question, not the average of nine in three scripts.
+        if block.kind == BLOCK_TEXT and _in_phrasings(heading_stack):
+            lines = _phrasing_lines(block.text)
+            if lines:
+                flush()
+                for line in lines:
+                    emit(line, heading_stack, breadcrumb=False)
+                buffer_stack = list(heading_stack)
+                continue
 
         block_len = len(block.text)
 
@@ -460,6 +552,22 @@ def validate_tool_card(meta: dict) -> list[str]:
                     f"fields[{index}] ('{field.get('name')}') has in: {location!r}. "
                     f"Use one of {', '.join(sorted(FIELD_LOCATIONS))}."
                 )
+            values = field.get("values")
+            if values is not None and not isinstance(values, list):
+                problems.append(
+                    f"fields[{index}] ('{field.get('name')}') has 'values' that is "
+                    f"not a list. Write the allowed values bare, or as mappings "
+                    f"with 'value' and 'means'."
+                )
+            elif isinstance(values, list):
+                for entry in values:
+                    if isinstance(entry, dict) and not str(
+                        entry.get("value") or ""
+                    ).strip():
+                        problems.append(
+                            f"fields[{index}] ('{field.get('name')}') has a value "
+                            f"entry with no 'value' in it."
+                        )
 
     base_url = meta.get("base_url")
     if base_url is not None and not str(base_url).startswith(("http://", "https://")):
@@ -467,6 +575,46 @@ def validate_tool_card(meta: dict) -> list[str]:
             f"base_url {base_url!r} should be an absolute URL. Leave it out for an "
             f"API on the product's own host."
         )
+
+    # Worked examples: what a merchant said, and what it fills in. They teach a
+    # boundary that no amount of describing a field will -- which of three
+    # offer types "colgate pe brush free" is -- and each one doubles as a test
+    # of the card. A field name here that is not on the card teaches a field
+    # that does not exist, so it is caught at upload rather than at runtime.
+    examples = meta.get("examples")
+    known = {
+        str(f.get("name")) for f in (fields or [])
+        if isinstance(f, dict) and f.get("name")
+    } if isinstance(fields, list) else set()
+    if examples is not None and not isinstance(examples, list):
+        problems.append(
+            "'examples' should be a list, one entry per worked example."
+        )
+    elif isinstance(examples, list):
+        for index, example in enumerate(examples):
+            if not isinstance(example, dict):
+                problems.append(
+                    f"examples[{index}] should be a mapping, not a bare value."
+                )
+                continue
+            if not str(example.get("says") or "").strip():
+                problems.append(
+                    f"examples[{index}] has no 'says' -- the merchant's own words "
+                    f"are what the example is teaching from."
+                )
+            filled = example.get("fields")
+            if not isinstance(filled, dict) or not filled:
+                problems.append(
+                    f"examples[{index}] has no 'fields' saying what those words "
+                    f"fill in."
+                )
+                continue
+            for name in filled:
+                if known and str(name) not in known:
+                    problems.append(
+                        f"examples[{index}] fills '{name}', which is not a field "
+                        f"on this card."
+                    )
 
     constants = meta.get("constants")
     if constants is not None and not isinstance(constants, dict):
@@ -476,6 +624,25 @@ def validate_tool_card(meta: dict) -> list[str]:
         )
 
     return problems
+
+
+def _value_names(values) -> list[str]:
+    """
+    An enum field's value names, whichever shape the card wrote them in.
+
+    A card may list values bare, or as mappings carrying what each one MEANS.
+    Only the names belong in a retrieval chunk: the meanings are for the model
+    filling the field in, and a paragraph of them in a chunk is text a
+    merchant's phrasing will never match.
+    """
+    if not isinstance(values, list):
+        return []
+    names = []
+    for value in values:
+        name = str(value.get("value") if isinstance(value, dict) else value).strip()
+        if name:
+            names.append(name)
+    return names
 
 
 def _describe_fields(fields, *, required: bool) -> str:
@@ -498,9 +665,9 @@ def _describe_fields(fields, *, required: bool) -> str:
         name = str(field.get("name") or "").strip().replace("_", " ")
         if not name:
             continue
-        values = field.get("values")
-        if isinstance(values, list) and values:
-            readable = " or ".join(str(v).replace("_", " ") for v in values)
+        names = _value_names(field.get("values"))
+        if names:
+            readable = " or ".join(n.replace("_", " ") for n in names)
             parts.append(f"{name} ({readable})")
         else:
             parts.append(name)
@@ -637,6 +804,9 @@ MIN_DEVANAGARI_PHRASINGS = 2
 MIN_STEPS = 3
 MIN_HINGLISH_CHARS = 100
 MIN_SECTION_CHARS = 100
+# Shorter than a real section: a disambiguation block is two contrasting
+# statements, and the shortest genuine one in the corpus is 212 characters.
+MIN_DISAMBIGUATION_CHARS = 150
 
 HINGLISH_HEADING = "Hinglish mein"
 PHRASINGS_HEADING = "Frequently asked as"
@@ -717,6 +887,26 @@ def validate_text_document(meta: dict, body: str, max_size: int | None = None) -
                 f"'## {HINGLISH_HEADING}' is {len(block)} characters. It needs at "
                 f"least {MIN_HINGLISH_CHARS} — it has to be a real answer a "
                 f"Hinglish query can win, not a label."
+            )
+
+    # A "Not this" section is the only place several confusable questions are
+    # answered outright -- "credits are not a bank balance" is the answer to
+    # "can I withdraw my credits", and it appears nowhere else in the corpus.
+    # It was an undocumented convention, which is how a consumer came to treat
+    # it as an answer-free pointer and drop it. Documented and enforced now: if
+    # it is going to carry an answer, it has to actually carry one.
+    for heading in headings:
+        if role_for_section(heading) != ROLE_DISAMBIGUATION:
+            continue
+        block = next(t for h, t in _sections(body) if h == heading)
+        if len(block) < MIN_DISAMBIGUATION_CHARS:
+            problems.append(
+                f"'## {heading}' is {len(block)} characters. A "
+                f"'{DISAMBIGUATION_PREFIX}' section needs at least "
+                f"{MIN_DISAMBIGUATION_CHARS} — it is retrieved and read like any "
+                f"other prose, and it is usually the only place the distinction "
+                f"it draws is stated. A bare pointer to another document is not "
+                f"enough."
             )
 
     if PHRASINGS_HEADING not in headings:

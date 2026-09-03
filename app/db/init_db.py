@@ -60,6 +60,56 @@ CREATE INDEX IF NOT EXISTS ix_{prefix}_chunks_document_id
     ON {prefix}_chunks (document_id);
 """
 
+# ── The vector index ────────────────────────────────────────────────────────
+#
+# Until this existed every retrieval was a sequential scan, comparing the query
+# vector against every stored one. At a few hundred chunks that is a couple of
+# milliseconds and invisible. It is also linear, so it stops being invisible at
+# exactly the corpus size that makes the knowledge base worth having.
+#
+# HNSW cannot index a `vector` wider than 2000 dimensions and this model
+# produces 3072. The way through is `halfvec`, which HNSW indexes up to 4000 --
+# so the index is built on the EXPRESSION `embedding::halfvec(n)` rather than
+# on the column itself.
+#
+# An expression index rather than a column type change, deliberately:
+#
+#   * Nothing is rewritten and nothing is lost. The column stays vector(n) at
+#     full precision, every row is untouched, and dropping the index puts the
+#     database back exactly as it was. Changing the column to halfvec would
+#     round every stored vector to sixteen bits permanently -- a one-way trip
+#     through a knowledge base that costs money and time to rebuild, to save
+#     disk that is not scarce.
+#   * The full-precision copy stays available for whatever wants it later: an
+#     exact rescoring pass over the approximate index's candidates, a second
+#     index, or a different distance measure.
+#
+# The cost is that a query must ORDER BY the same expression or the planner
+# will not use this. That constraint is stated where it has to be obeyed -- the
+# orchestrator's repository module, which holds every piece of SQL that touches
+# a vector.
+#
+# m and ef_construction are pgvector's own defaults, written out rather than
+# left implicit so that changing them is a visible decision rather than a
+# silent inheritance.
+#
+# One caveat worth stating before it bites: this runs inside the transaction
+# that creates the tables, so on a table that already holds a lot of rows the
+# build takes a write lock. At the current few hundred chunks it is
+# milliseconds. Past roughly a hundred thousand, this statement should move out
+# of startup and be issued as CREATE INDEX CONCURRENTLY from a maintenance
+# path, which cannot run in a transaction.
+_HNSW_INDEX = """
+CREATE INDEX IF NOT EXISTS ix_{prefix}_chunks_embedding_hnsw
+    ON {prefix}_chunks
+ USING hnsw ((embedding::halfvec({dimensions})) halfvec_cosine_ops)
+      WITH (m = 16, ef_construction = 64)
+"""
+
+# HNSW's ceiling for a halfvec. Above it there is no index to build, and saying
+# so in the log beats a CREATE INDEX that raises on a startup path.
+HNSW_MAX_DIMENSIONS = 4000
+
 
 def _check_prefix(table_prefix: str) -> str:
     if not TABLE_PREFIX_RE.match(table_prefix):
@@ -154,6 +204,17 @@ async def init_kb_schema(
         ).split(";"):
             if statement.strip():
                 await conn.execute(text(statement))
+
+        if dimensions <= HNSW_MAX_DIMENSIONS:
+            await conn.execute(text(_HNSW_INDEX.format(
+                prefix=table_prefix, dimensions=dimensions)))
+        else:
+            logger.warning(
+                f"{chunks}: {dimensions}-dimension vectors cannot be indexed "
+                f"by HNSW even as halfvec (the limit is "
+                f"{HNSW_MAX_DIMENSIONS}), so search here is a sequential scan. "
+                f"Reduce the embedding width or use a different index type."
+            )
 
 
 # ── One-time migration ──────────────────────────────────────────────────────

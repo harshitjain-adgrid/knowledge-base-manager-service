@@ -50,13 +50,22 @@ banking system moving it, not LessPay releasing it.
 
 ## What LessPay charges for
 
-Using the shop profile, taking payments and running your own offers is not what
-you pay for. LessPay makes money from:
+There is no subscription for the basics. Setting up your shop profile, being
+listed in the customer app and running your own offers cost you nothing, however
+many offers you run.
+
+Two things you choose to buy:
 
 - **Packages and programs** you subscribe to, which give you credits and other
   benefits every month.
 - **Promotions** — paying to have your shop or offer shown to more customers
   inside the customer app.
+
+Separately from those, **a fee is deducted from each payment** before the money
+settles to your bank. That is not something you subscribe to; it comes out of
+the payment itself. Every payment's receipt shows both figures side by side —
+what the customer paid, and what you keep after the fee — so the exact amount
+for any payment is on that payment's receipt.
 
 ## What if something is not working the way you expect
 
@@ -75,9 +84,12 @@ dilwata hai, aur aap jo chhoot dena chahein wo unhein dikhata hai. Do app hote
 hain: aap LessPay Business chalate hain aur customer LessPay ka customer app.
 Sabse zaroori baat yeh hai ki LessPay aapka paisa apne paas nahi rakhta — paisa
 seedha aapke apne UPI account mein jaata hai aur bank ke schedule par pahunchta
-hai. Dukaan ka profile banana, payment lena aur apne offer chalana free hai.
-LessPay kamata hai package aur program se, aur promotion se jab aap zyada logon
-ko dikhne ke liye paisa dete hain.
+hai. Dukaan ka profile banana, app mein dikhna aur apne offer chalana bilkul
+free hai — iska koi subscription nahi hai. Paise aap do cheezon ke dete hain:
+package ya program lene par, aur promotion par jab zyada logon tak pahunchna ho.
+In dono se alag, har payment par ek fee kat ti hai jo settle hone se pehle nikal
+jaati hai. Har payment ki receipt par dono cheezein likhi hoti hain — customer
+ne kitna diya aur fee ke baad aapke paas kitna bacha.
 
 ## Frequently asked as
 

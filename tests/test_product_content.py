@@ -18,6 +18,7 @@ import pytest
 import yaml
 
 from app.services.chunking_service import chunk_document
+from app.services.chunking_service import MIN_PHRASINGS
 from app.services.extraction_service import extract, promote_frontmatter
 
 CONTENT = pathlib.Path(__file__).parent.parent / "content" / "product-knowledge"
@@ -184,6 +185,12 @@ def test_it_chunks_into_passages_that_can_answer_on_their_own(path):
 
     assert chunks, "produced no chunks"
     for chunk in chunks:
+        # A search tag is not a passage. It is one phrasing, embedded on its own
+        # so that matching it retrieves this document, and it is never handed to
+        # the assistant -- retrieval promotes it to the prose it stands for or
+        # drops it. The floor below is about passages, and does not apply here.
+        if chunk.metadata.get("chunk_role") == "search_tag":
+            continue
         # A chunk shorter than this is a fragment. Retrieved on its own it gives
         # the assistant a heading and half a thought, which reads back as a
         # confident non-answer. The opening paragraph is the usual offender,
@@ -191,6 +198,87 @@ def test_it_chunks_into_passages_that_can_answer_on_their_own(path):
         assert len(chunk.content) >= 120, (
             f"chunk {chunk.chunk_index} is {len(chunk.content)} chars: "
             f"{chunk.content[:60]!r}"
+        )
+
+
+@pytest.mark.parametrize("path", ALL, ids=IDS)
+def test_each_search_phrasing_is_indexed_as_its_own_vector(path):
+    """
+    Multi-vector indexing: one phrasing, one chunk, one embedding.
+
+    Embedded as a single block, a phrasings list is a centroid of everything in
+    it -- commonly nine questions about three different things across three
+    scripts. A merchant asking about one of them matches a point that is mostly
+    about the other two, and a neighbouring document wins the slot instead. That
+    is the confusable failure, and it happens before any post-hoc repair can
+    reach it.
+    """
+    extraction = extract(path.read_bytes(), path.name)
+    front = promote_frontmatter(extraction)
+    chunks = chunk_document(extraction.text, front["doc_type"] or "text",
+                            front["metadata"], front["title"])
+
+    tags = [c for c in chunks if c.metadata.get("chunk_role") == "search_tag"]
+    assert len(tags) >= MIN_PHRASINGS, (
+        f"{len(tags)} search tags; the contract asks for {MIN_PHRASINGS}. "
+        f"A phrasings list that stayed in one chunk is one diluted vector."
+    )
+
+    for tag in tags:
+        assert "\n" not in tag.content, (
+            f"a tag holds more than one phrasing: {tag.content[:80]!r}"
+        )
+        assert not tag.content.lstrip().startswith(("-", "*")), (
+            f"the bullet marker was embedded: {tag.content[:60]!r}"
+        )
+        assert '"' not in tag.content, (
+            f"quotes were embedded rather than the question: {tag.content[:60]!r}"
+        )
+        # The breadcrumb is a constant across every tag in a document. Prefixing
+        # it onto a short question is most of the vector, which is exactly the
+        # dilution this change removes.
+        assert ">" not in tag.content, (
+            f"a tag carries its breadcrumb: {tag.content[:80]!r}"
+        )
+        assert tag.metadata.get("section", "").strip().lower() == "frequently asked as", (
+            "a tag lost the section that marks it index-only, so retrieval "
+            "would hand a bare question to the assistant as a source"
+        )
+
+
+@pytest.mark.parametrize("path", ALL, ids=IDS)
+def test_every_chunk_declares_what_it_is_for(path):
+    """
+    Every chunk carries a role, decided here and read everywhere else.
+
+    This is the contract that replaced consumers pattern-matching on headings.
+    The orchestrator used to decide a chunk was answer-free if its heading
+    started with "not this", which silently dropped the disambiguation sections
+    -- the only place several confusable questions are answered. A role written
+    at ingestion cannot drift from the format, because it IS the format.
+    """
+    extraction = extract(path.read_bytes(), path.name)
+    front = promote_frontmatter(extraction)
+    chunks = chunk_document(extraction.text, front["doc_type"] or "text",
+                            front["metadata"], front["title"])
+
+    known = {"prose", "search_tag", "disambiguation"}
+    for chunk in chunks:
+        role = chunk.metadata.get("chunk_role")
+        assert role in known, f"chunk {chunk.chunk_index} has role {role!r}"
+
+    roles = {c.metadata.get("chunk_role") for c in chunks}
+    assert "search_tag" in roles, "no phrasings were indexed for this document"
+    assert "prose" in roles, "a document with no readable chunk answers nothing"
+
+    # A disambiguation chunk is prose that happens to draw a contrast. If one
+    # were ever marked index-only again, this is what would catch it.
+    for chunk in chunks:
+        if chunk.metadata.get("chunk_role") != "disambiguation":
+            continue
+        assert len(chunk.content) >= 150, (
+            f"disambiguation chunk is {len(chunk.content)} chars: "
+            f"{chunk.content[:70]!r}"
         )
 
 
