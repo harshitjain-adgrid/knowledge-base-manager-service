@@ -34,6 +34,10 @@ REPO = HERE.parent
 # The API catalogue is still built material, so it stays here.
 PRODUCT_DIR = REPO / "content" / "product-knowledge"
 PRODUCT_KB_SLUG = "product-knowledge"
+# Overridable, because a second catalogue is a normal thing to want: a new set
+# of cards is written alongside the live one and proved against it before
+# anything is pointed at it. Hardcoding the folder meant the only way to build
+# one was to edit this file, which is exactly the edit that gets left in.
 API_DIR = HERE / "api-catalog"
 
 API_KB_SLUG = "api-catalog"
@@ -148,7 +152,15 @@ def ensure_api_kb(client: Client, dsn: str) -> None:
         "description": "One card per API. Retrieval here selects an action; "
                        "the product knowledge base answers questions.",
         "dsn": dsn,
-        "embedding_provider": "gemini",
+        # The transport, not the model. gemini-embedding-2 is reached THROUGH
+        # fal now -- the direct Gemini key was retired -- and the service
+        # rejects the old pairing outright: "'gemini-embedding-2' is a fal
+        # model, but the provider given was 'gemini'". Left stale here, the
+        # only symptom is that a new knowledge base cannot be created at all.
+        #
+        # Read from the environment so this cannot drift again, with the
+        # current answer as the fallback.
+        "embedding_provider": os.environ.get("EMBEDDING_PROVIDER", "fal"),
         "embedding_model": "gemini-embedding-2",
         "embedding_dimensions": 3072,
         "chunk_size": API_KB_CHUNK_SIZE,
@@ -276,6 +288,15 @@ def main() -> None:
                         help="Connection string for the API catalogue knowledge "
                              "base. Only needed the first time. The same database "
                              "as the service's own is fine.")
+    parser.add_argument("--api-dir", default="",
+                        help="folder of API cards to load "
+                             "(default: seeds/api-catalog)")
+    parser.add_argument("--api-slug", default="",
+                        help="knowledge base slug for the API cards "
+                             "(default: api-catalog). A new slug is created if "
+                             "it does not exist; its tables are kb_<slug>.")
+    parser.add_argument("--api-name", default="",
+                        help="display name when creating a new API catalogue")
     parser.add_argument("--only", choices=["product", "api"],
                         help="Load just one side.")
     parser.add_argument("--purge", action="store_true",
@@ -283,6 +304,20 @@ def main() -> None:
                              "base that have no file behind them. Use when a "
                              "folder is the whole truth for that knowledge base.")
     args = parser.parse_args()
+
+    # Applied to the module globals rather than threaded through every call
+    # site: the defaults are already read from module scope in half a dozen
+    # places, and a partial override would be worse than none.
+    global API_DIR, API_KB_SLUG, API_KB_NAME
+    if args.api_dir:
+        API_DIR = pathlib.Path(args.api_dir)
+        if not API_DIR.is_absolute():
+            API_DIR = REPO / args.api_dir
+        if not API_DIR.is_dir():
+            sys.exit(f"--api-dir {API_DIR} is not a folder")
+    if args.api_slug:
+        API_KB_SLUG = args.api_slug
+        API_KB_NAME = args.api_name or args.api_slug.replace("-", " ").title()
 
     if args.token:
         client = Client(args.base, args.token)
