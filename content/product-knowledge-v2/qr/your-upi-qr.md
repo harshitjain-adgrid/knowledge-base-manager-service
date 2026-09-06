@@ -53,6 +53,20 @@ LessPay checks a UPI ID when you add it, and rejects one it does not recognise.
 This usually means a typo in the part after the `@`, or a provider that is not
 supported. Check the ID in your own UPI app and copy it exactly.
 
+## Not this — your UPI address is not your shop's address
+
+Your **UPI ID** is an address only in the sense that money is sent to it —
+`yourshop@ybl`. It says nothing about where your shop is.
+
+Your shop's **address** is the street location customers see on your page
+and use to find you. Changing one never touches the other.
+
+If the app is refusing something you typed, the two are refused for
+different reasons. A UPI ID is refused when the part after the `@` is wrong
+or the provider is not supported. A shop address is a separate field on
+your shop details. For that one, see "Your Shop Name, Category and
+Address".
+
 ## Hinglish mein
 
 Aapka QR code wahi hai jisse customer paisa deta hai aur app mein aapki dukaan
@@ -62,6 +76,9 @@ saath hote hain: uske app ko pata chalta hai ki paisa kahan bhejna hai, aur
 yeh bhi ki dukaan aapki hai, isliye aapke offer dikh jaate hain. Agar koi
 seedhe aapki UPI ID kisi doosre app mein type karke paisa bhejta hai to offer
 nahi lagta. UPI provider apne aap `@` ke baad wale hisse se pehchana jata hai.
+Dhyan rahe: UPI ID ko bhi 'address' kehte hain, lekin ye aapki
+dukaan ke pate se alag cheez hai — ek mein paisa aata hai,
+doosre se customer aapko dhoondhta hai.
 
 ## Frequently asked as
 

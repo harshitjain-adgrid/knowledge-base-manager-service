@@ -62,6 +62,10 @@ Your address decides which customers see you. The customer app shows shops
 within a distance the customer chooses, so the address needs to be where your
 shop actually is, not a home or billing address.
 
+This is the street address of your shop. The **UPI ID** behind your QR code
+is sometimes also called a payment address, and it is a different thing
+entirely — see "Your UPI QR Code".
+
 ## What if your shop details are wrong
 
 All three can be changed from your shop profile at any time. Changing your

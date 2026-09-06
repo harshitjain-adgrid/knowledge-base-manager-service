@@ -171,19 +171,47 @@ def ensure_api_kb(client: Client, dsn: str) -> None:
     print(f"  created — {body['dsn_preview']}")
 
 
-def existing_titles(client: Client, kb: str) -> dict:
-    """Every document already in a knowledge base, by title."""
-    found = {}
+def existing_titles(client: Client, kb: str) -> tuple[dict, dict]:
+    """
+    Every document already in a knowledge base: ids by title, and bodies.
+
+    The body comes back on the list response anyway, and keeping it is what
+    lets a re-run tell an edited file from an untouched one.
+    """
+    ids, bodies = {}, {}
     skip = 0
     while True:
         status, body = client.get(f"/api/v1/documents?skip={skip}&limit=100", kb=kb)
         if status != 200:
-            return found
+            return ids, bodies
         for document in body["documents"]:
-            found[document["title"]] = document["id"]
+            ids[document["title"]] = document["id"]
+            bodies[document["title"]] = document.get("content") or ""
         skip += 100
         if skip >= body["total"]:
-            return found
+            return ids, bodies
+
+
+def normalise(text: str) -> str:
+    """
+    Line endings only, so a comparison is about content and nothing else.
+
+    The service stores what it was sent, CRLF included, while reading the same
+    file in Python text mode gives LF. Comparing them raw reports every
+    document as changed, which is how a skip-unchanged check ends up skipping
+    nothing.
+    """
+    return text.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def same_as_stored(path: pathlib.Path, stored: str) -> bool:
+    """Is this file already in the knowledge base, unchanged?"""
+    if not stored:
+        return False
+    raw = path.read_text(encoding="utf-8")
+    parts = raw.split("---", 2)
+    body = parts[2] if len(parts) > 2 else raw
+    return normalise(body) == normalise(stored)
 
 
 def title_of(path: pathlib.Path) -> str | None:
@@ -221,16 +249,16 @@ def content_files(root: pathlib.Path) -> list[pathlib.Path]:
 
 
 def load_folder(client: Client, root: pathlib.Path, kb: str, label: str,
-                purge: bool = False) -> None:
+                purge: bool = False, force: bool = False) -> None:
     files = content_files(root)
     if not files:
         print(f"  nothing to load from {root}")
         return
 
     print(f"\n{label}: {len(files)} files -> knowledge base '{kb}'")
-    known = existing_titles(client, kb)
+    known, stored = existing_titles(client, kb)
 
-    loaded = replaced = failed = 0
+    loaded = replaced = skipped = failed = 0
     started = time.time()
 
     for path in files:
@@ -240,6 +268,21 @@ def load_folder(client: Client, root: pathlib.Path, kb: str, label: str,
         # Read the title out of the front matter so a re-run replaces rather
         # than duplicating. Cheap, and avoids needing an id on disk.
         title = title_of(path)
+
+        # An unchanged file is left exactly where it is.
+        #
+        # This used to delete and re-upload every document on every run, which
+        # re-chunks and re-embeds the whole corpus to publish a change to one
+        # paragraph. Worse than the cost: every other document gets fresh chunk
+        # rows, so a corpus that measurements were taken against quietly stops
+        # being the same corpus.
+        #
+        # The service was never the limitation -- it has always been
+        # document-scoped. This script was the bulk seeder for an empty
+        # knowledge base and simply never asked what had changed.
+        if title and not force and same_as_stored(path, stored.get(title, "")):
+            skipped += 1
+            continue
 
         if title and title in known:
             client.delete(f"/api/v1/documents/{known[title]}", kb=kb)
@@ -254,8 +297,8 @@ def load_folder(client: Client, root: pathlib.Path, kb: str, label: str,
             detail = str(body.get("detail"))
             print(f"  FAIL  {folder}{path.name}\n        {detail[:300]}")
 
-    print(f"  {loaded} loaded ({replaced} replaced), {failed} failed, "
-          f"{time.time() - started:.0f}s")
+    print(f"  {loaded} loaded ({replaced} replaced), {skipped} unchanged, "
+          f"{failed} failed, {time.time() - started:.0f}s")
 
     if not purge:
         return
@@ -288,6 +331,16 @@ def main() -> None:
                         help="Connection string for the API catalogue knowledge "
                              "base. Only needed the first time. The same database "
                              "as the service's own is fine.")
+    parser.add_argument("--product-dir", default="",
+                        help="folder of product documents to load "
+                             "(default: content/product-knowledge)")
+    parser.add_argument("--product-slug", default="",
+                        help="knowledge base slug for the product documents "
+                             "(default: product-knowledge)")
+    parser.add_argument("--force", action="store_true",
+                        help="re-upload every document even if the file is "
+                             "unchanged. Re-chunks and re-embeds the whole "
+                             "folder, and gives every document new chunk rows")
     parser.add_argument("--api-dir", default="",
                         help="folder of API cards to load "
                              "(default: seeds/api-catalog)")
@@ -308,7 +361,15 @@ def main() -> None:
     # Applied to the module globals rather than threaded through every call
     # site: the defaults are already read from module scope in half a dozen
     # places, and a partial override would be worse than none.
-    global API_DIR, API_KB_SLUG, API_KB_NAME
+    global API_DIR, API_KB_SLUG, API_KB_NAME, PRODUCT_DIR, PRODUCT_KB_SLUG
+    if args.product_dir:
+        PRODUCT_DIR = pathlib.Path(args.product_dir)
+        if not PRODUCT_DIR.is_absolute():
+            PRODUCT_DIR = REPO / args.product_dir
+        if not PRODUCT_DIR.is_dir():
+            sys.exit(f"--product-dir {PRODUCT_DIR} is not a folder")
+    if args.product_slug:
+        PRODUCT_KB_SLUG = args.product_slug
     if args.api_dir:
         API_DIR = pathlib.Path(args.api_dir)
         if not API_DIR.is_absolute():
@@ -335,10 +396,10 @@ def main() -> None:
 
     if args.only != "api":
         load_folder(client, PRODUCT_DIR, PRODUCT_KB_SLUG, "Product knowledge",
-                    purge=args.purge)
+                    purge=args.purge, force=args.force)
     if args.only != "product":
         load_folder(client, API_DIR, API_KB_SLUG, "API catalogue",
-                    purge=args.purge)
+                    purge=args.purge, force=args.force)
 
     print("\nTotals")
     for kb in ([PRODUCT_KB_SLUG] if args.only != "api" else []) + \
