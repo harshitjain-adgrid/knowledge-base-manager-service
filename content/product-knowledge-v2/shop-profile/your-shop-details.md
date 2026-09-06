@@ -62,10 +62,6 @@ Your address decides which customers see you. The customer app shows shops
 within a distance the customer chooses, so the address needs to be where your
 shop actually is, not a home or billing address.
 
-This is the street address of your shop. The **UPI ID** behind your QR code
-is sometimes also called a payment address, and it is a different thing
-entirely — see "Your UPI QR Code".
-
 ## What if your shop details are wrong
 
 All three can be changed from your shop profile at any time. Changing your
@@ -74,6 +70,19 @@ so check the sub-category too — the old sub-category does not carry over to a
 new category.
 
 Changes to your profile are confirmed with your MPIN.
+
+## Not this — your shop's address is not your payment address
+
+Your shop's **address** is the street location customers see on your page and
+use to find you. It decides which customers your shop is shown to, and you
+change it from your shop profile.
+
+Your **UPI ID** — the `name@bank` behind your QR code — is also called a
+payment address, and it is a different field entirely. It decides where your
+money lands, not where your shop is. Changing one never touches the other, and
+the app refuses them for different reasons: a UPI ID is refused when the part
+after the `@` is wrong or the provider is not supported, while a shop address
+is simply text on your profile. For the payment side, see "Your UPI QR Code".
 
 ## Hinglish mein
 
