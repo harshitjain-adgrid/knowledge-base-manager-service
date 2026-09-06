@@ -16,7 +16,7 @@ not_covered:
   - how to look up payments for a particular day or range
 related: [settlements, your-payment-history, your-upi-qr, how-a-customer-pays-you]
 aliases: [paisa kaise aata hai, payment kaise hota hai, utr, qr payment]
-entities: [UPI, UTR, LessPay QR, Other QR, Success, Pending, Failed, Refunded]
+entities: [UPI, UTR, LessPay QR, Other QR, Received, Pending, Failed, Refunded]
 ---
 
 # How You Get Paid
@@ -48,8 +48,8 @@ just the LessPay part.
 
 | Status | What it means |
 |---|---|
-| Success | The money is yours, awaiting settlement |
-| Pending | Started and not yet confirmed |
+| Received | The payment succeeded. The money is yours, awaiting settlement |
+| Pending | Awaiting confirmation. No action is needed from you |
 | Failed | It did not go through; nothing was taken |
 | Refunded | It was returned to the customer |
 

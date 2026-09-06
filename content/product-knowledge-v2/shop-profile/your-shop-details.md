@@ -15,8 +15,8 @@ not_covered:
   - which business categories exist and which one to pick
   - how to add keywords, service modes and facilities
 related: [your-business-category, service-modes-keywords-and-facilities, shop-photos, how-customers-discover-you]
-aliases: [dukaan ka naam, shop name badalna, address, galat naam]
-entities: [MPIN, Shop name, Category, Sub-category, Address]
+aliases: [mpin, dukaan ka naam, shop name badalna, address, galat naam]
+entities: [PIN, Shop name, Category, Sub-category, Address]
 ---
 
 # Your Shop Name, Category and Address
@@ -31,7 +31,7 @@ up when they search.
    address.
 3. Enter the new value. If you are changing the category, choose the
    sub-category again as well; the old one does not carry over.
-4. Save, and confirm with your **MPIN**.
+4. Save, and confirm with your **PIN**.
 5. Check your shop page afterwards — what you changed is what customers now see.
 
 ## Your name and your shop's name are different
@@ -69,7 +69,7 @@ category moves your shop into a different part of the customer app's listings,
 so check the sub-category too — the old sub-category does not carry over to a
 new category.
 
-Changes to your profile are confirmed with your MPIN.
+Changes to your profile are confirmed with your PIN.
 
 ## Not this — your shop's address is not your payment address
 
@@ -88,7 +88,7 @@ is simply text on your profile. For the payment side, see "Your UPI QR Code".
 
 Aapki dukaan ka naam, category aur address teeno milkar tay karte hain ki
 customer ko aap kaise dikhte hain. Shop profile kholein, jo badalna hai wo
-chunein, nayi value daalein aur MPIN se confirm karein. Dhyan rahe ki aapka
+chunein, nayi value daalein aur PIN se confirm karein. Dhyan rahe ki aapka
 apna naam aur dukaan ka naam do alag cheezein hain — customer ko sirf dukaan
 ka naam dikhta hai, aapka personal naam kabhi nahi. Category badalne par
 sub-category dobara chunni padti hai, purani apne aap nahi aati. Address wahi

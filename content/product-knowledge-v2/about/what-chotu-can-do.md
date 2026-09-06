@@ -10,13 +10,13 @@ review_by: 2027-02-27
 answers:
   - what the Chotu assistant can do
   - whether Chotu can create or change things on its own
-  - why Chotu keeps asking for the MPIN
+  - why Chotu keeps asking for the PIN
 not_covered:
   - what LessPay as a product does for a shop
   - what the PIN is and how to reset it
 related: [what-is-lesspay, your-pin, creating-a-deal, running-a-campaign]
 aliases: [chotu kya kar sakta hai, assistant, bot, sahayak]
-entities: [Chotu, MPIN, Draft]
+entities: [Chotu, PIN, Draft]
 ---
 
 # What Chotu Can Do for You
@@ -54,11 +54,11 @@ A draft is not live. Nothing has been created until you confirm it.
 
 **Chotu cannot create, change or delete anything that touches money, offers or
 your QR codes on its own.** Every one of those actions needs you to type your
-MPIN. The pattern is always the same:
+PIN. The pattern is always the same:
 
 1. You ask for something.
 2. Chotu prepares it and shows you exactly what it will do.
-3. You type your MPIN to confirm.
+3. You type your PIN to confirm.
 4. Only then does it happen.
 
 There is no setting that turns this off, and no way for Chotu to act while you
@@ -77,7 +77,7 @@ Two common reasons:
 - **Your shop is still being set up.** Chotu only offers money-related actions
   once your shop is fully active. Until then it can still answer questions.
 - **The rules do not allow it.** For example, it will refuse to delete the QR
-  code you are currently using, rather than walking you through the MPIN and
+  code you are currently using, rather than walking you through the PIN and
   then failing.
 
 ## Hinglish mein
@@ -87,7 +87,7 @@ kar puch sakte hain. Jo cheezein sirf padhni hain — aaj kitna kamaya, agla
 settlement kab hai, kaunse offer chal rahe hain, wallet mein kya hai — wo Chotu
 seedha bata deta hai, kisi permission ki zarurat nahi. Jo cheezein banani hain,
 jaise discount, deal ya promotion, unka Chotu sirf draft banata hai aur aapko
-dikhata hai. Kuch bhi asli tab tak nahi hota jab tak aap MPIN daal kar confirm
+dikhata hai. Kuch bhi asli tab tak nahi hota jab tak aap PIN daal kar confirm
 na karein. Chotu apne aap paisa, offer ya QR se juda koi kaam kabhi nahi karta.
 
 ## Frequently asked as

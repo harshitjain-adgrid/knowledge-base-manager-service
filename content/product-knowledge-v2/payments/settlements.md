@@ -16,7 +16,7 @@ not_covered:
   - what each payment status means at the counter
 related: [how-you-get-paid, when-a-settlement-is-on-hold, your-payment-history]
 aliases: [settlement, paisa bank mein kab, payout, bank account badalna, UTR]
-entities: [UTR, Success, Processing, Failed, Settlement]
+entities: [UTR, Pending, Processing, Completed, Failed, On hold, Settlement]
 ---
 
 # When Your Money Reaches Your Bank
@@ -37,13 +37,17 @@ on that screen rather than assuming a cycle — it is shown to you there.
 
 | Status | What it means |
 |---|---|
-| Success | The transfer completed. The money is in your account. |
-| Processing | The transfer has started and is with the bank. |
-| Failed | The transfer did not complete. |
+| Pending / processing | The settlement batch has started. The money is on its way. |
+| Completed | The funds are credited to your bank. The message names the account and a UTR. |
+| Failed / on hold | It could not be settled. A hold carries a reason and needs you to act on it. |
 
 A settlement that is processing has no **UTR** yet — the bank's reference number
 only exists once the transfer completes. An empty UTR on a processing settlement
 is expected, not a fault.
+
+The third state covers two situations that feel different to you. A transfer the
+bank rejected is usually wrong or closed account details. A settlement LessPay
+has held always carries a reason, and that reason is the thing to act on.
 
 ## Your bank account
 

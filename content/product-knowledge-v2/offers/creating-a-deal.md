@@ -15,8 +15,8 @@ not_covered:
   - how to create a discount that takes money off the bill
   - why a live deal is not reaching customers
 related: [creating-a-discount, deals-and-discounts, offer-not-showing, offer-status-and-validity]
-aliases: [deal banana, combo offer, bogo, ek ke saath ek free, free item, scheme]
-entities: [Buy one get one, Bundle, Free item, MPIN, BOGO]
+aliases: [mpin, deal banana, combo offer, bogo, ek ke saath ek free, free item, scheme]
+entities: [Buy one get one, Bundle, Free item, PIN, BOGO]
 ---
 
 # Creating a Deal
@@ -24,7 +24,7 @@ entities: [Buy one get one, Bundle, Free item, MPIN, BOGO]
 A deal gives the customer extra goods rather than money off their bill — a
 second item free, two things bundled at one price, something thrown in.
 Merchants call it a *combo* or a *scheme*. It is one of the two kinds of offer
-you can run, and creating one is confirmed with your MPIN before it goes live.
+you can run, and creating one is confirmed with your PIN before it goes live.
 
 ## The steps to create a deal
 
@@ -36,7 +36,7 @@ you can run, and creating one is confirmed with your MPIN before it goes live.
 4. Fill in the details that type asks for — quantities, price, or the bill
    amount that unlocks the free item.
 5. Give the deal a **title**, and decide whether it shows on your shop profile.
-6. Set when it runs, then confirm with your **MPIN**. The deal is live from its
+6. Set when it runs, then confirm with your **PIN**. The deal is live from its
    start time.
 
 Pick the type first. Changing your mind later means making a new deal rather
@@ -87,8 +87,8 @@ The app checks the details before it lets you confirm:
 - **A bundle** needs a price.
 - **A free item** needs both the item and the bill amount that unlocks it.
 
-If the save button does nothing, one of those is empty. If it asks for your MPIN
-and then refuses, the MPIN was wrong — nothing was created and you can try again.
+If the save button does nothing, one of those is empty. If it asks for your PIN
+and then refuses, the PIN was wrong — nothing was created and you can try again.
 
 ## Not this
 
@@ -104,7 +104,7 @@ ke liye Offers mein jaakar naya offer chunein, deal select karein, phir teen
 type mein se ek chunein — buy one get one, bundle ya free item. Type chunne ke
 baad app aapse usi hisaab se detail maangega: kitne kharide aur kitne free,
 ya bundle ka price, ya kitne ka bill hone par free item milega. Title dalein,
-tay karein ki shop profile par dikhana hai ya nahi, aur MPIN daal kar confirm
+tay karein ki shop profile par dikhana hai ya nahi, aur PIN daal kar confirm
 karein. Type baad mein badla nahi ja sakta — naya deal banana padta hai.
 
 ## Frequently asked as

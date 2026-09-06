@@ -15,15 +15,15 @@ not_covered:
   - how to create a deal that gives free goods
   - who is allowed to use an offer and how often
 related: [creating-a-deal, deals-and-discounts, who-gets-your-offer, offer-not-showing]
-aliases: [discount banana, chhoot, percent off, flat off, happy hours, sale]
-entities: [MPIN, Happy hours, Maximum saving, Minimum bill, Nth payment]
+aliases: [mpin, discount banana, chhoot, percent off, flat off, happy hours, sale]
+entities: [PIN, Happy hours, Maximum saving, Minimum bill, Nth payment]
 ---
 
 # Creating a Discount
 
 A discount takes money off the customer's bill — either a percentage or a fixed
 amount. Merchants call it *chhoot* or simply *off*. Creating one is confirmed
-with your MPIN.
+with your PIN.
 
 ## The steps to create a discount
 
@@ -35,7 +35,7 @@ with your MPIN.
 4. Add any optional limits you want — a maximum saving, a minimum bill or an
    Nth-payment trigger, and happy hours.
 5. Name the discount and decide whether it shows on your shop profile.
-6. Set when it runs, then confirm with your **MPIN**.
+6. Set when it runs, then confirm with your **PIN**.
 
 ## What you must decide
 
@@ -96,7 +96,7 @@ mein. Banane ke liye Offers mein naya offer chunein, discount select karein,
 percentage ya flat chunein aur amount daalein. Chahein to minimum bill, maximum
 saving, happy hours ya har Nth payment jaisi condition laga sakte hain. Dhyan
 rahe: minimum bill aur Nth payment dono ek saath nahi chalte, ek hi chunna hota
-hai. Naam dein, shop profile par dikhana hai ya nahi tay karein, aur MPIN daal
+hai. Naam dein, shop profile par dikhana hai ya nahi tay karein, aur PIN daal
 kar confirm karein.
 
 ## Frequently asked as

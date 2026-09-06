@@ -39,14 +39,14 @@ Three things, in the order most shopkeepers care about them:
 - **You bring people in.** You set discounts and deals that customers can see
   before they walk in, and you can pay to be shown to more people.
 
-## LessPay never holds your money
+## Your money is collected and then settled to you
 
-Payments settle straight through to your bank account. LessPay is not a wallet
-sitting in the middle holding your takings — it splits the payment at the moment
-it happens.
+A customer's payment is collected first and transferred to your registered bank
+account afterwards. The two are separate events, which is why a settlement
+lands on a schedule rather than the instant a customer pays.
 
-That is why your settlement lands on a schedule rather than instantly: it is the
-banking system moving it, not LessPay releasing it.
+Nothing is left to you to arrange. The transfer goes to whichever of your bank
+accounts is active, and each one is announced when it completes.
 
 ## What LessPay charges for
 

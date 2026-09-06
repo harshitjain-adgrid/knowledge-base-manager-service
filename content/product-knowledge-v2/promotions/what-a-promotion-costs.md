@@ -54,14 +54,13 @@ The total you are asked to pay is the discounted price plus GST.
 
 ## The limits you can choose within
 
-| Setting | Range |
-|---|---|
-| Audience | 100 to 10,000 customers |
-| Radius around your shop | 1 to 5 km |
-| Days | 1 to 30 |
+Audience size, the radius around your shop and the number of days each have a
+minimum and a maximum, and the screen shows you the range you can move within as
+you set them. The figures are not published here, so read them off the screen
+rather than planning against a number quoted from memory.
 
-WhatsApp and text promotions always run for a single day, whatever you pick —
-they are one-time sends.
+WhatsApp and text promotions are one-time sends, so a duration does not apply to
+them.
 
 ## What if the price changes when you confirm
 

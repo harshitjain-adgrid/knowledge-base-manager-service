@@ -15,20 +15,20 @@ not_covered:
   - what a UPI ID is and why an offer needs the LessPay QR
   - where settled money arrives
 related: [your-upi-qr, how-you-get-paid, settlements]
-aliases: [doosra qr, qr badalna, backup qr, upi account badalna, qr delete]
-entities: [Live, Backup, MPIN, UPI ID]
+aliases: [mpin, doosra qr, qr badalna, backup qr, upi account badalna, qr delete]
+entities: [Live, Backup, PIN, UPI ID]
 ---
 
 # Managing More Than One QR Code
 
 You can keep several UPI IDs on your account, but only one is in use at a time.
-Adding, switching and removing them are all confirmed with your MPIN.
+Adding, switching and removing them are all confirmed with your PIN.
 
 ## The steps to add and switch a QR
 
 1. Open the **QR** section of LessPay Business.
 2. Choose to add a UPI ID and type it exactly as it appears in your own UPI app.
-3. Confirm with your **MPIN**. The new QR is added as a **backup** unless it is
+3. Confirm with your **PIN**. The new QR is added as a **backup** unless it is
    your first, in which case it becomes live automatically.
 4. To start taking payments on it, promote that backup to **live**. The one that
    was live becomes a backup in the same moment.
@@ -53,7 +53,7 @@ accept money.
 
 To remove it, promote another QR to live first, then delete the old one.
 
-Chotu refuses this up front rather than asking for your MPIN and then failing.
+Chotu refuses this up front rather than asking for your PIN and then failing.
 
 ## What a deleted QR does
 
@@ -69,7 +69,7 @@ offers. Add a UPI ID and it becomes live automatically as the first one.
 ## Hinglish mein
 
 Aap apne account par ek se zyada UPI ID rakh sakte hain, lekin ek waqt par sirf
-ek hi chalti hai. QR section mein jaakar UPI ID daalein aur MPIN se confirm
+ek hi chalti hai. QR section mein jaakar UPI ID daalein aur PIN se confirm
 karein — pehli QR apne aap live ho jati hai, baaki backup ke roop mein judti
 hain. Kisi backup ko live banane par purani wali usi waqt backup ban jati hai,
 isliye kabhi do live ya zero live nahi hote. Sabse zaroori niyam: jo QR abhi

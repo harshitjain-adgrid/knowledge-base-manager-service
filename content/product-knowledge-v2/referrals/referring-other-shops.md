@@ -40,8 +40,8 @@ how many people you can bring.
 Referral rewards arrive as **reward credit** in your wallet. That is the bucket
 you can spend on LessPay's own promotion channels.
 
-Reward credit is not the same as credit you buy — it is limited to LessPay's own
-channels and it carries an expiry date. It is worth spending rather than saving.
+Credit you earn this way carries an expiry date, so it is worth spending rather
+than saving.
 
 ## Watching your referrals
 
